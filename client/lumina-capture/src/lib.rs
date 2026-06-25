@@ -1,3 +1,4 @@
+pub mod diff;
 use std::time::{Duration, Instant};
 use xcap::Monitor;
 

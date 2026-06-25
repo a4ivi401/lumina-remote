@@ -41,7 +41,7 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [x] Host discovery in LAN without internet.
 - [x] **TASK-3.2:** Direct LAN connection algorithms.
 - [x] **TASK-3.3:** Adaptive Bitrate (QoS).
-- [ ] **TASK-3.4:** Screen capture optimization (Dirty Rects).
+- [x] **TASK-3.4:** Screen capture optimization (Dirty Rects).
 - [ ] **TASK-3.5:** Focus loss handling (pause capture).
 
 ## Phase 4: GUI & Cross-Platform (Estimated: 5 weeks)
