@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MonitorPlay, Copy, Settings, Search, Monitor, Plus, Command, X, ShieldCheck, Key } from "lucide-react";
+import { MonitorPlay, Copy, Settings, Search, Monitor, Plus, Command, X, ShieldCheck } from "lucide-react";
 import { useScrambleText } from "./hooks/useScramble";
 
 interface SavedMachine {
@@ -13,10 +13,6 @@ interface SavedMachine {
 function App() {
   const [deviceIdRaw, setDeviceIdRaw] = useState("Loading...");
   const deviceId = useScrambleText(deviceIdRaw, deviceIdRaw !== "Loading...");
-  
-  const [hostPinRaw, setHostPinRaw] = useState("••••-••••-••••");
-  const hostPin = useScrambleText(hostPinRaw, hostPinRaw !== "••••-••••-••••");
-  const [isHoveringPin, setIsHoveringPin] = useState(false);
 
   const [partnerId, setPartnerId] = useState("");
   const [isHoveringCopy, setIsHoveringCopy] = useState(false);
@@ -44,15 +40,6 @@ function App() {
     invoke<SavedMachine[]>("get_saved_machines")
       .then(setSavedMachines)
       .catch(console.error);
-  };
-
-  const handleGeneratePin = async () => {
-    try {
-      const newPin = await invoke<string>("generate_session_pin");
-      setHostPinRaw(newPin);
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   const handleConnectClick = () => {

@@ -15,7 +15,7 @@ export function useScrambleText(text: string, isActive: boolean = true) {
     const maxIterations = 20; // How many times it scrambles before settling
     
     const interval = setInterval(() => {
-      setDisplayText((prev) => {
+      setDisplayText((_prev) => {
         return text
           .split('')
           .map((char, index) => {
