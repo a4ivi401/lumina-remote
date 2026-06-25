@@ -1,8 +1,11 @@
 [package]
-name = "lumina-encoder"
+name = "lumina-poc"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ffmpeg-next = "6.1"
 lumina-capture = { path = "../lumina-capture" }
+winit = "0.28"
+softbuffer = "0.3"
+image = "0.24"
+

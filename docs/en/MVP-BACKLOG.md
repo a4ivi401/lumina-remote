@@ -17,8 +17,8 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [ ] *Note:* In the final stage (Phase 4), rewrite to native APIs (DirectX Desktop Duplication, ScreenCaptureKit) for maximum performance.
 - [ ] **TASK-1.5:** Video encoding module `lumina-encoder`.
   - [ ] Integrate FFmpeg (`ffmpeg-sys-next`) for hardware H.264 encoding.
-- [ ] **TASK-1.6:** Decoding and rendering module.
-  - [ ] Window for video stream testing (`winit` + `softbuffer` or `egui`).
+- [x] **TASK-1.6:** Decoding and rendering module.
+  - [x] Window for video stream testing (`winit` + `softbuffer` or `egui`).
 - [ ] **TASK-1.7:** Input transmission (`lumina-input`).
   - [ ] Mouse and keyboard event injection on the host.
 
