@@ -1934,6 +1934,17 @@ name = "lumina-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "lumina-relay-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lumina-signal-server"
 version = "0.1.0"
 dependencies = [

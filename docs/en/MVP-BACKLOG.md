@@ -33,7 +33,7 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [x] `PublicKey` registration logic and session maintenance.
 - [x] **TASK-2.3:** NAT Traversal (STUN).
   - [x] Exchange ICE candidates and perform Hole Punching.
-- [ ] **TASK-2.4:** Basic Relay Server.
+- [x] **TASK-2.4:** Basic Relay Server.
 
 ## Phase 3: LAN & Adaptivity (Estimated: 3 weeks)
 **Goal:** Work in any network, instant LAN connection, dynamic QoS.
