@@ -23,10 +23,20 @@ fn main() {
         }
     };
 
+    let mut is_focused = true;
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
 
         match event {
+            Event::WindowEvent { event: WindowEvent::Focused(focused), .. } => {
+                is_focused = focused;
+                if focused {
+                    println!("Window Focused: Sending StreamControl(Active) to Host");
+                } else {
+                    println!("Window Lost Focus: Sending StreamControl(Paused) to Host to save CPU/GPU");
+                }
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
@@ -34,9 +44,16 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::MainEventsCleared => {
-                window.request_redraw();
+                if is_focused {
+                    window.request_redraw();
+                } else {
+                    // Sleep to save CPU when window is inactive
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
             }
             Event::RedrawRequested(_) => {
+                if !is_focused { return; }
+                
                 if let Ok(frame) = capturer.capture_frame() {
                     let width = frame.width;
                     let height = frame.height;

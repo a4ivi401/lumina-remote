@@ -42,7 +42,7 @@ This document outlines the development plan for LuminaRemote, divided into phase
 - [x] **TASK-3.2:** Direct LAN connection algorithms.
 - [x] **TASK-3.3:** Adaptive Bitrate (QoS).
 - [x] **TASK-3.4:** Screen capture optimization (Dirty Rects).
-- [ ] **TASK-3.5:** Focus loss handling (pause capture).
+- [x] **TASK-3.5:** Focus loss handling (pause capture).
 
 ## Phase 4: GUI & Cross-Platform (Estimated: 5 weeks)
 **Goal:** Commercial look, UI client, macOS/Linux support.

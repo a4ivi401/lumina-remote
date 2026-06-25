@@ -12,6 +12,18 @@ pub enum LuminaMessage {
     
     /// Quality of Service (QoS) telemetry sent periodically from Client -> Host
     Qos(QosMetrics),
+    
+    /// Commands to control the flow of the video stream (e.g. pause/resume)
+    StreamControl(StreamState),
+}
+
+/// Represents the requested state of the video stream.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamState {
+    /// The client window is active and focused. Host should send frames normally.
+    Active,
+    /// The client window is minimized or out of focus. Host should pause capturing to save CPU/GPU.
+    Paused,
 }
 
 /// Represents a single video frame in the pipeline.
