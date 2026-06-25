@@ -39,8 +39,8 @@ This document outlines the development plan for LuminaRemote, divided into phase
 
 - [x] **TASK-3.1:** Local Discovery (mDNS).
   - [x] Host discovery in LAN without internet.
-- [ ] **TASK-3.2:** Direct LAN connection algorithms.
-- [ ] **TASK-3.3:** Adaptive Bitrate (QoS).
+- [x] **TASK-3.2:** Direct LAN connection algorithms.
+- [x] **TASK-3.3:** Adaptive Bitrate (QoS).
 - [ ] **TASK-3.4:** Screen capture optimization (Dirty Rects).
 - [ ] **TASK-3.5:** Focus loss handling (pause capture).
 

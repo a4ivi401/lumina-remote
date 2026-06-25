@@ -3,6 +3,7 @@ pub mod handshake;
 pub mod signaling;
 pub mod nat;
 pub mod mdns_discovery;
+pub mod manager;
 
 use crate::crypto::generate_dummy_certificate;
 use quinn::{ClientConfig, Endpoint, ServerConfig};

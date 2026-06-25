@@ -1,3 +1,4 @@
+pub mod qos;
 use lumina_capture::Frame;
 
 /// Represents a compressed video packet ready to be sent over QUIC.
