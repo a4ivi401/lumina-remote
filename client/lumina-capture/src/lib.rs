@@ -1,67 +1,47 @@
 pub mod diff;
-use std::time::{Duration, Instant};
-use xcap::Monitor;
+pub mod frame;
 
-/// A frame captured from the screen.
-pub struct Frame {
-    pub width: u32,
-    pub height: u32,
-    /// Raw RGBA pixels
-    pub data: Vec<u8>,
-    pub timestamp: Duration,
-}
+pub mod mac_capture;
+pub mod win_capture;
+pub mod linux_capture;
+pub mod xcap_capture;
+
+pub use frame::Frame;
 
 /// Abstract trait for screen capture to allow swapping backends later.
-pub trait CaptureDevice {
+pub trait CaptureDevice: Send {
     fn capture_frame(&mut self) -> Result<Frame, String>;
     fn get_width(&self) -> u32;
     fn get_height(&self) -> u32;
 }
 
-/// Cross-platform capture implementation using the `xcap` crate.
-/// Used for Phase 1 (PoC).
-pub struct XcapCapture {
-    monitor: Monitor,
-    start_time: Instant,
-}
-
-impl XcapCapture {
-    /// Initializes capture on the primary monitor.
-    pub fn new() -> Result<Self, String> {
-        let monitors = Monitor::all().map_err(|e| e.to_string())?;
-        
-        let monitor = monitors
-            .into_iter()
-            .find(|m| m.is_primary().unwrap_or(false))
-            .or_else(|| Monitor::all().unwrap_or_default().into_iter().next())
-            .ok_or("No monitors found")?;
-
-        Ok(Self {
-            monitor,
-            start_time: Instant::now(),
-        })
-    }
-}
-
-impl CaptureDevice for XcapCapture {
-    fn capture_frame(&mut self) -> Result<Frame, String> {
-        let image = self.monitor.capture_image().map_err(|e| e.to_string())?;
-        
-        Ok(Frame {
-            width: image.width(),
-            height: image.height(),
-            data: image.into_raw(),
-            timestamp: self.start_time.elapsed(),
-        })
+pub fn create_capture_device() -> Result<Box<dyn CaptureDevice>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Try native SCKit, fallback to Xcap
+        if let Ok(c) = mac_capture::MacCapture::new() {
+            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
+        }
     }
 
-    fn get_width(&self) -> u32 {
-        self.monitor.width().unwrap_or(0)
+    #[cfg(target_os = "windows")]
+    {
+        // Try native DXGI, fallback to Xcap
+        if let Ok(c) = win_capture::WinCapture::new() {
+            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
+        }
     }
 
-    fn get_height(&self) -> u32 {
-        self.monitor.height().unwrap_or(0)
+    #[cfg(target_os = "linux")]
+    {
+        // For Linux, LinuxCapture wraps Xcap
+        if let Ok(c) = linux_capture::LinuxCapture::new() {
+            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
+        }
     }
+
+    // Universal Fallback
+    xcap_capture::XcapCapture::new().map(|c| Box::new(c) as Box<dyn CaptureDevice>)
 }
 
 #[cfg(test)]
