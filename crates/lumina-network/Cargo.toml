@@ -1,0 +1,15 @@
+[package]
+name = "lumina-network"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lumina-core = { path = "../lumina-core" }
+quinn = "0.10"
+rustls = { version = "0.21", features = ["dangerous_configuration", "quic"] }
+rcgen = "0.11"
+tokio = { version = "1.32", features = ["full"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"

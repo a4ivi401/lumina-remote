@@ -1,0 +1,28 @@
+/target/
+**/*.rs.bk
+*.pdb
+.DS_Store
+
+# Tauri
+/src-tauri/target/
+
+# Node/UI
+/ui/node_modules/
+/ui/dist/
+*.local
+
+# OS
+Thumbs.db
+.idea/
+.vscode/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# ai memory folder
+.ai-mind/

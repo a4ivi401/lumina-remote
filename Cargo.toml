@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/*",
+]
+
+[workspace.dependencies]
+tokio = { version = "1.32", features = ["full"] }
+quinn = "0.10"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+argon2 = "0.5"
+ffmpeg-sys-next = "6.0"
+mdns = "3.0"
