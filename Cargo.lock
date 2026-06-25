@@ -2923,6 +2923,7 @@ name = "lumina-input"
 version = "0.1.0"
 dependencies = [
  "enigo",
+ "serde",
 ]
 
 [[package]]

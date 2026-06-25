@@ -132,6 +132,45 @@ function App() {
     return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 8)}-${cleaned.slice(8, 12)}`;
   };
 
+  const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!isConnected) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Simple scaling mapping (assuming remote and local resolutions align for now)
+    const x = Math.round(e.clientX - rect.left);
+    const y = Math.round(e.clientY - rect.top);
+    invoke("send_input", { event: JSON.stringify({ MouseMove: { x, y } }) });
+  };
+
+  const handleMouseClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!isConnected) return;
+    let button = "left";
+    if (e.button === 2) button = "right";
+    if (e.button === 1) button = "middle";
+    invoke("send_input", { event: JSON.stringify({ MouseClick: { button } }) });
+  };
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      let key = e.key.toLowerCase();
+      if (key === " ") key = "space";
+      invoke("send_input", { event: JSON.stringify({ KeyDown: { key } }) });
+      e.preventDefault();
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      let key = e.key.toLowerCase();
+      if (key === " ") key = "space";
+      invoke("send_input", { event: JSON.stringify({ KeyUp: { key } }) });
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [isConnected]);
+
   if (isConnected) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden" data-tauri-drag-region>
@@ -140,7 +179,11 @@ function App() {
           <img 
             src={videoFrame} 
             alt="Remote Desktop Stream" 
-            className="w-full h-full object-contain pointer-events-none"
+            className="w-full h-full object-contain"
+            onMouseMove={handleMouseMove}
+            onClick={handleMouseClick}
+            onContextMenu={(e) => { e.preventDefault(); handleMouseClick(e); }}
+            draggable={false}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center">

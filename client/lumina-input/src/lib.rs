@@ -1,15 +1,16 @@
 use enigo::{Enigo, KeyboardControllable, MouseButton, MouseControllable, Key};
+use serde::{Serialize, Deserialize};
 
 /// Represents an abstract input event received from the network.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputEvent {
     MouseMove { x: i32, y: i32 },
-    MouseDown { button: MouseButton },
-    MouseUp { button: MouseButton },
-    MouseClick { button: MouseButton },
+    MouseDown { button: String },
+    MouseUp { button: String },
+    MouseClick { button: String },
     MouseScroll { x: i32, y: i32 },
-    KeyDown { key: Key },
-    KeyUp { key: Key },
+    KeyDown { key: String },
+    KeyUp { key: String },
     TypeString { text: String },
 }
 
@@ -33,13 +34,13 @@ impl InputController {
                 self.enigo.mouse_move_to(x, y);
             }
             InputEvent::MouseDown { button } => {
-                self.enigo.mouse_down(button);
+                self.enigo.mouse_down(Self::map_mouse(&button));
             }
             InputEvent::MouseUp { button } => {
-                self.enigo.mouse_up(button);
+                self.enigo.mouse_up(Self::map_mouse(&button));
             }
             InputEvent::MouseClick { button } => {
-                self.enigo.mouse_click(button);
+                self.enigo.mouse_click(Self::map_mouse(&button));
             }
             InputEvent::MouseScroll { x, y } => {
                 if x != 0 {
@@ -50,13 +51,44 @@ impl InputController {
                 }
             }
             InputEvent::KeyDown { key } => {
-                self.enigo.key_down(key);
+                self.enigo.key_down(Self::map_key(&key));
             }
             InputEvent::KeyUp { key } => {
-                self.enigo.key_up(key);
+                self.enigo.key_up(Self::map_key(&key));
             }
             InputEvent::TypeString { text } => {
                 self.enigo.key_sequence(&text);
+            }
+        }
+    }
+
+    fn map_mouse(btn: &str) -> MouseButton {
+        match btn {
+            "right" => MouseButton::Right,
+            "middle" => MouseButton::Middle,
+            _ => MouseButton::Left,
+        }
+    }
+
+    fn map_key(k: &str) -> Key {
+        match k {
+            "return" | "enter" => Key::Return,
+            "tab" => Key::Tab,
+            "space" => Key::Space,
+            "backspace" => Key::Backspace,
+            "escape" => Key::Escape,
+            "super" | "command" | "windows" => Key::Super,
+            "command" => Key::Command,
+            "shift" => Key::Shift,
+            "capslock" => Key::CapsLock,
+            "alt" | "option" => Key::Alt,
+            "control" | "ctrl" => Key::Control,
+            _ => {
+                if k.len() == 1 {
+                    Key::Layout(k.chars().next().unwrap())
+                } else {
+                    Key::Space // default fallback
+                }
             }
         }
     }

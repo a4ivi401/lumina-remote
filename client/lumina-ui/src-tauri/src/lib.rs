@@ -13,9 +13,22 @@ fn get_local_device_id() -> String {
 
 use std::sync::Mutex;
 use lazy_static::lazy_static;
+use tokio::sync::mpsc;
+use lumina_input::InputEvent;
 
 lazy_static! {
     static ref HOST_PIN: Mutex<String> = Mutex::new(String::new());
+    static ref INPUT_SENDER: Mutex<Option<mpsc::UnboundedSender<InputEvent>>> = Mutex::new(None);
+}
+
+#[tauri::command]
+fn send_input(event: String) {
+    // Parse JSON into InputEvent and send to channel
+    if let Ok(input_evt) = serde_json::from_str::<InputEvent>(&event) {
+        if let Some(sender) = INPUT_SENDER.lock().unwrap().as_ref() {
+            let _ = sender.send(input_evt);
+        }
+    }
 }
 
 #[tauri::command]
@@ -168,18 +181,41 @@ async fn connect_to_device(
                     if reply.trim() == "ACCEPTED" {
                         println!("[Lumina] Connection ACCEPTED by target!");
                         
+                        // Split the TCP stream so we can read video frames and write input events simultaneously
+                        let (mut read_half, mut write_half) = stream.into_split();
+                        
+                        let (tx, mut rx) = mpsc::unbounded_channel::<InputEvent>();
+                        *INPUT_SENDER.lock().unwrap() = Some(tx);
+                        
+                        // Spawn Input Writer Task
+                        tokio::spawn(async move {
+                            while let Some(evt) = rx.recv().await {
+                                if let Ok(json) = serde_json::to_string(&evt) {
+                                    let bytes = json.as_bytes();
+                                    let size = bytes.len() as u32;
+                                    // Send 4-byte size + json string
+                                    if write_half.write_all(&size.to_be_bytes()).await.is_err() {
+                                        break;
+                                    }
+                                    if write_half.write_all(bytes).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        });
+                        
                         // We are connected! Now spawn a task to read the video stream from this TCP connection.
                         let app_handle = app.clone();
                         tokio::spawn(async move {
                             loop {
                                 let mut size_buf = [0u8; 4];
-                                if stream.read_exact(&mut size_buf).await.is_err() {
+                                if read_half.read_exact(&mut size_buf).await.is_err() {
                                     break;
                                 }
                                 let size = u32::from_be_bytes(size_buf) as usize;
                                 
                                 let mut frame_buf = vec![0u8; size];
-                                if stream.read_exact(&mut frame_buf).await.is_err() {
+                                if read_half.read_exact(&mut frame_buf).await.is_err() {
                                     break;
                                 }
                                 
@@ -280,6 +316,39 @@ pub fn run() {
                                                     let _ = socket.write_all(b"ACCEPTED\n").await;
                                                     
                                                     // Spawn video capture loop
+                                                    let (mut read_half, mut write_half) = socket.into_split();
+                                                    
+                                                    // Spawn Input Reader Loop using a channel to an OS thread because Enigo is !Send
+                                                    let (input_tx, input_rx) = std::sync::mpsc::channel::<InputEvent>();
+                                                    
+                                                    std::thread::spawn(move || {
+                                                        let mut controller = lumina_input::InputController::new();
+                                                        while let Ok(evt) = input_rx.recv() {
+                                                            controller.handle_event(evt);
+                                                        }
+                                                    });
+
+                                                    tokio::spawn(async move {
+                                                        loop {
+                                                            let mut size_buf = [0u8; 4];
+                                                            if read_half.read_exact(&mut size_buf).await.is_err() {
+                                                                break;
+                                                            }
+                                                            let size = u32::from_be_bytes(size_buf) as usize;
+                                                            let mut json_buf = vec![0u8; size];
+                                                            if read_half.read_exact(&mut json_buf).await.is_err() {
+                                                                break;
+                                                            }
+                                                            
+                                                            if let Ok(json_str) = String::from_utf8(json_buf) {
+                                                                if let Ok(evt) = serde_json::from_str::<InputEvent>(&json_str) {
+                                                                    let _ = input_tx.send(evt);
+                                                                }
+                                                            }
+                                                        }
+                                                    });
+                                                    
+                                                    // Spawn Video Writer Loop
                                                     if let Ok(mut capturer) = lumina_capture::create_capture_device() {
                                                         loop {
                                                             if let Ok(frame) = capturer.capture_frame() {
@@ -301,10 +370,10 @@ pub fn run() {
                                                                     ).is_ok() {
                                                                         let size = bytes.len() as u32;
                                                                         // Send Size + Bytes
-                                                                        if socket.write_all(&size.to_be_bytes()).await.is_err() {
+                                                                        if write_half.write_all(&size.to_be_bytes()).await.is_err() {
                                                                             break;
                                                                         }
-                                                                        if socket.write_all(&bytes).await.is_err() {
+                                                                        if write_half.write_all(&bytes).await.is_err() {
                                                                             break;
                                                                         }
                                                                     }
@@ -380,7 +449,8 @@ pub fn run() {
             generate_session_pin,
             connect_to_device,
             get_saved_machines,
-            get_local_network_devices
+            get_local_network_devices,
+            send_input
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
