@@ -29,7 +29,8 @@
   - [ ] Actor-модель на `tokio`.
   - [ ] Сховище сесій in-memory.
   - [ ] REST/WebSocket для обміну IP.
-- [ ] **TASK-2.2:** Підключення Клієнта до Signal Server.
+- [x] **TASK-2.2:** Підключення Клієнта до Signal Server.
+  - [x] Логіка реєстрації `PublicKey` та підтримки сесії.
 - [ ] **TASK-2.3:** NAT Traversal (STUN).
 - [ ] **TASK-2.4:** Базовий Relay Server.
 

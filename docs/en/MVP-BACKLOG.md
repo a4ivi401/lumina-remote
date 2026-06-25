@@ -29,7 +29,8 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [ ] Actor model on `tokio`.
   - [ ] In-memory session store.
   - [ ] REST/WebSocket for IP exchange.
-- [ ] **TASK-2.2:** Connect Client to Signal Server.
+- [x] **TASK-2.2:** Client Connection to Signal Server.
+  - [x] `PublicKey` registration logic and session maintenance.
 - [ ] **TASK-2.3:** NAT Traversal (STUN).
 - [ ] **TASK-2.4:** Basic Relay Server.
 

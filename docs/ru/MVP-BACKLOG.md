@@ -29,8 +29,8 @@
   - [x] Реализация Actor-модели на `tokio`.
   - [x] Хранилище сессий in-memory (с опциональным Redis).
   - [x] REST API и WebSocket-эндпоинты для обмена IP-адресами.
-- [ ] **TASK-2.2:** Подключение Клиента к Signal Server.
-  - [ ] Логика регистрации `PublicKey` и поддержания сессии.
+- [x] **TASK-2.2:** Подключение Клиента к Signal Server.
+  - [x] Логика регистрации `PublicKey` и поддержания сессии.
 - [ ] **TASK-2.3:** NAT Traversal (STUN).
   - [ ] Обмен ICE-кандидатами и Hole Punching (пробитие NAT).
 - [ ] **TASK-2.4:** Базовый Relay Server.
