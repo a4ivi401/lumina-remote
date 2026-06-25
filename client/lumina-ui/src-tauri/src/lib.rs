@@ -92,7 +92,7 @@ struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            signal_server: "wss://lumina.a4ivi4.dev/ws".to_string(),
+            signal_server: "ws://lumina.a4ivi4.dev/ws".to_string(),
             stun_server: "stun.l.google.com:19302".to_string(),
         }
     }

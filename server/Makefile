@@ -3,17 +3,16 @@
 # The default target
 all: deploy
 
-# Initialize Let's Encrypt certificates and start the entire stack
+# Deploy without SSL
 deploy:
-	@echo "🚀 Deploying LuminaRemote Infrastructure..."
-	@chmod +x ./init-letsencrypt.sh
-	@./init-letsencrypt.sh
+	@echo "🚀 Deploying LuminaRemote Signal Server (HTTP only)..."
+	docker-compose up -d --build
 
 # View logs for the signal server
 logs:
 	docker-compose logs -f signal-server
 
-# View logs for all services (Nginx, Certbot, Signal Server)
+# View logs for all services
 logs-all:
 	docker-compose logs -f
 
@@ -21,7 +20,6 @@ logs-all:
 stop:
 	docker-compose down
 
-# Completely remove all containers, networks, and generated certificates
+# Completely remove all containers and volumes
 clean:
 	docker-compose down -v
-	sudo rm -rf ./certbot
