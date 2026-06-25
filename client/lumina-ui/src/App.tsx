@@ -23,17 +23,29 @@ function App() {
   const [saveMachine, setSaveMachine] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   
-  // Saved Machines
   const [savedMachines, setSavedMachines] = useState<SavedMachine[]>([]);
+  const [lanMachines, setLanMachines] = useState<SavedMachine[]>([]);
 
   useEffect(() => {
-    // Fetch local device ID from Rust backend
     invoke<string>("get_local_device_id")
       .then(setDeviceIdRaw)
       .catch(console.error);
       
-    // Fetch saved machines
     loadSavedMachines();
+    
+    // Poll LAN devices every 5 seconds
+    const lanInterval = setInterval(() => {
+      invoke<SavedMachine[]>("get_local_network_devices")
+        .then(setLanMachines)
+        .catch(console.error);
+    }, 5000);
+    
+    // Initial fetch
+    invoke<SavedMachine[]>("get_local_network_devices")
+      .then(setLanMachines)
+      .catch(console.error);
+
+    return () => clearInterval(lanInterval);
   }, []);
 
   const loadSavedMachines = () => {
@@ -41,6 +53,8 @@ function App() {
       .then(setSavedMachines)
       .catch(console.error);
   };
+
+  const allMachines = [...lanMachines, ...savedMachines.filter(s => !lanMachines.find(l => l.id === s.id))];
 
   const handleConnectClick = () => {
     if (partnerId.length > 5) {
@@ -224,14 +238,13 @@ function App() {
             </button>
           </div>
           
-          {/* Grid of machines */}
           <div className="grid grid-cols-2 gap-4 overflow-y-auto pr-2">
-            {savedMachines.length === 0 ? (
+            {allMachines.length === 0 ? (
               <div className="col-span-2 text-center py-12 text-gray-500 text-sm">
                 Нет сохраненных машин
               </div>
             ) : (
-              savedMachines.map((machine) => (
+              allMachines.map((machine) => (
                 <div 
                   key={machine.id} 
                   className="group cursor-pointer"
@@ -247,8 +260,9 @@ function App() {
                     </div>
                   </div>
                   <h3 className="text-sm font-medium text-gray-200">{machine.name}</h3>
-                  <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Saved
+                  <p className="text-xs mt-1 flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${machine.name.includes('(LAN)') ? 'bg-blue-400' : 'bg-emerald-400'}`}></span> 
+                    {machine.name.includes('(LAN)') ? <span className="text-blue-400">В локальной сети</span> : <span className="text-emerald-400">Сохранено</span>}
                   </p>
                 </div>
               ))

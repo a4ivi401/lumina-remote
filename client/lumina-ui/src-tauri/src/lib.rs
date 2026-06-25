@@ -99,6 +99,27 @@ fn load_config(app: &tauri::AppHandle) -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
+async fn get_local_network_devices(app: tauri::AppHandle) -> Result<Vec<SavedMachine>, String> {
+    let local_id = get_local_device_id();
+    let discovered = lumina_network::mdns_discovery::discover_all_local_hosts(2).await?;
+    
+    let mut machines = Vec::new();
+    for id in discovered {
+        // Don't show ourselves
+        if id != local_id {
+            machines.push(SavedMachine {
+                id: id.clone(),
+                name: format!("{} (LAN)", id),
+                is_online: true,
+                last_connected: 0,
+            });
+        }
+    }
+    
+    Ok(machines)
+}
+
+#[tauri::command]
 async fn connect_to_device(
     app: tauri::AppHandle,
     partner_id: String,
@@ -233,7 +254,8 @@ pub fn run() {
             get_local_device_id,
             generate_session_pin,
             connect_to_device,
-            get_saved_machines
+            get_saved_machines,
+            get_local_network_devices
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

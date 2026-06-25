@@ -69,6 +69,37 @@ pub async fn discover_local_host(
     }
 }
 
+/// Discovers all Lumina hosts on the local network.
+pub async fn discover_all_local_hosts(timeout_secs: u64) -> Result<Vec<String>, String> {
+    let mdns = ServiceDaemon::new().map_err(|e| format!("Failed to create mDNS daemon: {}", e))?;
+    let receiver = mdns
+        .browse(SERVICE_TYPE)
+        .map_err(|e| format!("Failed to browse mDNS: {}", e))?;
+
+    let mut found_devices = Vec::new();
+
+    let discovery_task = async {
+        while let Ok(event) = receiver.recv_async().await {
+            match event {
+                ServiceEvent::ServiceResolved(info) => {
+                    let full_name = info.get_fullname();
+                    // Name is usually LMN-1234-5678._lumina._udp.local.
+                    if let Some(id) = full_name.split('.').next() {
+                        if !found_devices.contains(&id.to_string()) {
+                            found_devices.push(id.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    };
+
+    let _ = timeout(Duration::from_secs(timeout_secs), discovery_task).await;
+    
+    Ok(found_devices)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
