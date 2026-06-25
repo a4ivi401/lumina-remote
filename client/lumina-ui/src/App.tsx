@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { MonitorPlay, Copy, Settings, Search, Monitor, Plus, Command, X, ShieldCheck } from "lucide-react";
 import { useScrambleText } from "./hooks/useScramble";
 
@@ -25,6 +26,9 @@ function App() {
   
   const [savedMachines, setSavedMachines] = useState<SavedMachine[]>([]);
   const [lanMachines, setLanMachines] = useState<SavedMachine[]>([]);
+  
+  // Incoming Connection State
+  const [incomingConnection, setIncomingConnection] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<string>("get_local_device_id")
@@ -45,7 +49,16 @@ function App() {
       .then(setLanMachines)
       .catch(console.error);
 
-    return () => clearInterval(lanInterval);
+    // Listen for incoming LAN connections
+    const unlisten = listen<string>("incoming-connection", (event) => {
+      console.log("Incoming connection from:", event.payload);
+      setIncomingConnection(event.payload);
+    });
+
+    return () => {
+      clearInterval(lanInterval);
+      unlisten.then(f => f());
+    };
   }, []);
 
   const loadSavedMachines = () => {
@@ -143,6 +156,44 @@ function App() {
                 )}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming Connection Popup Overlay */}
+      {incomingConnection && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80" data-tauri-drag-region>
+          <div className="glass-panel w-96 rounded-2xl p-6 relative border border-emerald-500/30 shadow-[0_0_50px_-12px_rgba(16,185,129,0.3)]">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-2 relative">
+                <ShieldCheck size={32} />
+                <div className="absolute inset-0 border-2 border-emerald-500 rounded-full animate-ping opacity-20"></div>
+              </div>
+              
+              <div>
+                <h3 className="font-bold text-xl text-white mb-1">Входящее подключение</h3>
+                <p className="text-sm text-gray-400">Устройство <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">{incomingConnection}</span> хочет получить доступ к вашему рабочему столу.</p>
+              </div>
+
+              <div className="flex gap-3 w-full mt-4">
+                <button 
+                  onClick={() => setIncomingConnection(null)}
+                  className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-400 font-medium hover:bg-red-500/20 transition-colors border border-red-500/20"
+                >
+                  Отклонить
+                </button>
+                <button 
+                  onClick={() => {
+                    // For alpha, the Rust backend automatically replies ACCEPTED,
+                    // but we dismiss the popup here.
+                    setIncomingConnection(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-600/20"
+                >
+                  Разрешить
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

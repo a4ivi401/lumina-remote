@@ -140,7 +140,30 @@ async fn connect_to_device(
     
     match path {
         lumina_network::manager::ConnectionPath::DirectLan(addr) => {
-            println!("[Lumina] Connected via LAN! IP: {}", addr);
+            println!("[Lumina] Found via LAN! Sending connection request to {}", addr);
+            let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await.map_err(|e| e.to_string())?;
+            
+            // Send CONNECT request
+            let my_id = get_local_device_id();
+            let msg = format!("CONNECT:{}", my_id);
+            socket.send_to(msg.as_bytes(), addr).await.map_err(|e| e.to_string())?;
+            
+            // Wait for ACCEPTED reply (Timeout 5 seconds)
+            let mut buf = [0u8; 1024];
+            let result = tokio::time::timeout(std::time::Duration::from_secs(5), socket.recv_from(&mut buf)).await;
+            
+            match result {
+                Ok(Ok((len, _))) => {
+                    let reply = String::from_utf8_lossy(&buf[..len]);
+                    if reply == "ACCEPTED" {
+                        println!("[Lumina] Connection ACCEPTED by target!");
+                    } else {
+                        return Err("Target rejected the connection".to_string());
+                    }
+                }
+                Ok(Err(e)) => return Err(format!("Socket error: {}", e)),
+                Err(_) => return Err("Target did not respond (Timed out)".to_string()),
+            }
         }
         lumina_network::manager::ConnectionPath::P2pWan { our_public_addr, .. } => {
             println!("[Lumina] Connected via WAN! Public IP: {}", our_public_addr);
@@ -188,16 +211,35 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Start background mDNS advertisement so other computers on the LAN can find us!
+            let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let my_id = get_local_device_id();
-                // In a real app, QUIC binds to a dynamic port. For the Alpha test, we use 4433.
                 let port = 4433; 
+                
+                // 1. Start mDNS daemon
                 match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
                     Ok(_daemon) => {
                         println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
-                        // Keep the daemon alive
-                        loop {
-                            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                        
+                        // 2. Start a REAL UDP listener on port 4433 to receive connection requests
+                        if let Ok(socket) = tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", port)).await {
+                            println!("[Lumina] Listening for incoming LAN connections on UDP port {}", port);
+                            let mut buf = [0u8; 1024];
+                            loop {
+                                if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
+                                    let msg = String::from_utf8_lossy(&buf[..len]);
+                                    if msg.starts_with("CONNECT:") {
+                                        let partner_id = msg.trim_start_matches("CONNECT:");
+                                        println!("[Lumina] Incoming connection request from {} ({})", partner_id, addr);
+                                        // Emit event to frontend to show "Accept/Reject" popup
+                                        let _ = app_handle.emit("incoming-connection", partner_id);
+                                        
+                                        // Auto-reply ACCEPTED for the Alpha test
+                                        // In Beta, this will wait for the user to click "Accept" in the UI.
+                                        let _ = socket.send_to(b"ACCEPTED", addr).await;
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(e) => {
