@@ -12,8 +12,9 @@ This document outlines the development plan for LuminaRemote, divided into phase
 - [ ] **TASK-1.3:** Setup `quinn` (QUIC) in `lumina-network`.
   - [ ] Integrate key generation as `rustls::CustomCertVerifier` / PSK.
   - [ ] Develop test data exchange (P2P echo client/server).
-- [ ] **TASK-1.4:** Screen capture module `lumina-capture`.
-  - [ ] Use DirectX Desktop Duplication API (Windows).
+- [x] **TASK-1.4:** Screen capture module `lumina-capture`.
+  - [x] Use cross-platform crate (`xcap`) for quick start (PoC).
+  - [ ] *Note:* In the final stage (Phase 4), rewrite to native APIs (DirectX Desktop Duplication, ScreenCaptureKit) for maximum performance.
 - [ ] **TASK-1.5:** Video encoding module `lumina-encoder`.
   - [ ] Integrate FFmpeg (`ffmpeg-sys-next`) for hardware H.264 encoding.
 - [ ] **TASK-1.6:** Decoding and rendering module.

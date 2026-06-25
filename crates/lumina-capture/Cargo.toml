@@ -2,4 +2,7 @@
 name = "lumina-capture"
 version = "0.1.0"
 edition = "2021"
+
 [dependencies]
+xcap = "0.9.6"
+image = "0.24"

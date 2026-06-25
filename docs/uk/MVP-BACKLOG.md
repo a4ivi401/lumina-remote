@@ -12,8 +12,9 @@
 - [ ] **TASK-1.3:** Налаштувати `quinn` (QUIC) в `lumina-network`.
   - [ ] Інтеграція генерації ключів як `rustls::CustomCertVerifier` / PSK.
   - [ ] Тестовий обмін даними (echo-клієнт/сервер P2P).
-- [ ] **TASK-1.4:** Модуль захоплення екрана `lumina-capture`.
-  - [ ] Використання DirectX Desktop Duplication API (Windows).
+- [x] **TASK-1.4:** Модуль захоплення екрана `lumina-capture`.
+  - [x] Використання кросплатформного крейта (`xcap`) для швидкого старту (PoC).
+  - [ ] *Примітка:* На фінальній стадії (Фаза 4) переписати на нативні API (DirectX Desktop Duplication, ScreenCaptureKit) для максимальної продуктивності.
 - [ ] **TASK-1.5:** Модуль кодування відео `lumina-encoder`.
   - [ ] Інтеграція FFmpeg (`ffmpeg-sys-next`) для апаратного H.264 кодування.
 - [ ] **TASK-1.6:** Модуль декодування та рендерингу.
