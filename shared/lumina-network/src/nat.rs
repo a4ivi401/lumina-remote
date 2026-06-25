@@ -36,9 +36,11 @@ pub async fn discover_public_endpoint(
     request[7] = 0x42;
     
     // Generate Random Transaction ID
-    let mut rng = rand::thread_rng();
-    for i in 8..20 {
-        request[i] = rng.gen();
+    {
+        let mut rng = rand::thread_rng();
+        for i in 8..20 {
+            request[i] = rng.gen();
+        }
     }
 
     socket

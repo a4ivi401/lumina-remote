@@ -2,9 +2,13 @@ use tauri::Emitter;
 
 #[tauri::command]
 fn get_local_device_id() -> String {
-    // In a real scenario, this is derived from a persistently stored private key.
-    // For now, we return a mock ID.
-    "LMN-8X92-QW10".to_string()
+    // For the Alpha test, we generate a persistent ID based on the computer's hostname or just a random one.
+    // To keep it simple and avoid clashes on LAN:
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let r1: u32 = rng.gen_range(1000..9999);
+    let r2: u32 = rng.gen_range(1000..9999);
+    format!("LMN-{}-{}", r1, r2)
 }
 
 #[tauri::command]
@@ -105,14 +109,29 @@ async fn connect_to_device(
     let config = load_config(&app)?;
 
     // 2. Initialize our Connection Manager pointing to the configured domains
-    let _manager = lumina_network::manager::ConnectionManager::new(
+    let manager = lumina_network::manager::ConnectionManager::new(
         config.stun_server,
         config.signal_server,
     );
 
-    // TODO: In the E2E phase, we will invoke `manager.establish_path(&partner_id).await` here.
+    // 3. Attempt to establish path (This will trigger mDNS discovery for LAN!)
+    let path = manager.establish_path(&partner_id).await?;
     
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    match path {
+        lumina_network::manager::ConnectionPath::DirectLan(addr) => {
+            println!("[Lumina] Connected via LAN! IP: {}", addr);
+        }
+        lumina_network::manager::ConnectionPath::P2pWan { our_public_addr, .. } => {
+            println!("[Lumina] Connected via WAN! Public IP: {}", our_public_addr);
+        }
+        lumina_network::manager::ConnectionPath::Relay(addr) => {
+            println!("[Lumina] Connected via Relay! IP: {}", addr);
+        }
+    }
+
+    // TODO: Pass the `path` to `lumina-core` to establish QUIC connection and start video stream.
+    
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     if pin.len() < 12 {
         return Err("Invalid PIN format".into());
@@ -122,9 +141,7 @@ async fn connect_to_device(
         let file_path = get_machines_file(&app)?;
         let mut machines = get_saved_machines(app.clone()).unwrap_or_default();
         
-        // Remove if exists
         machines.retain(|m| m.id != partner_id);
-        
         machines.push(SavedMachine {
             id: partner_id.clone(),
             name: format!("Machine {}", &partner_id[..4]),
@@ -146,6 +163,25 @@ use tauri::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Start background mDNS advertisement so other computers on the LAN can find us!
+    tokio::spawn(async move {
+        let my_id = get_local_device_id();
+        // In a real app, QUIC binds to a dynamic port. For the Alpha test, we use 4433.
+        let port = 4433; 
+        match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
+            Ok(_daemon) => {
+                println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
+                // Keep the daemon alive
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                }
+            }
+            Err(e) => {
+                println!("[Lumina] Failed to advertise mDNS: {}", e);
+            }
+        }
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
