@@ -9,9 +9,9 @@
 - [x] **TASK-1.2:** Написать модуль `lumina-core` (Криптография).
   - [x] Реализовать `derive_key_pair(seed: &str) -> (StaticSecret, PublicKey)`.
   - [x] Использовать `argon2` для деривации ключа из сид-фразы.
-- [ ] **TASK-1.3:** Настроить `quinn` (QUIC) в `lumina-network`.
-  - [ ] Интеграция генерации ключей как `rustls::CustomCertVerifier` / PSK.
-  - [ ] Разработка тестового обмена данными (echo-клиент/сервер в P2P).
+- [x] **TASK-1.3:** Настроить `quinn` (QUIC) в `lumina-network`.
+  - [x] Интеграция генерации ключей как `rustls::CustomCertVerifier` / PSK.
+  - [x] Разработка тестового обмена данными (echo-клиент/сервер в P2P).
 - [ ] **TASK-1.4:** Модуль захвата экрана `lumina-capture`.
   - [ ] Использование DirectX Desktop Duplication API (Windows) как самого быстрого метода.
 - [ ] **TASK-1.5:** Модуль кодирования видео `lumina-encoder`.
