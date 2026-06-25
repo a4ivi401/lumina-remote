@@ -1,7 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "client/*",
+    "client/lumina-poc",
+    "client/lumina-capture",
+    "client/lumina-encoder",
+    "client/lumina-input",
+    "client/lumina-ui/src-tauri",
     "server/*",
     "shared/*"
 ]
