@@ -1,4 +1,4 @@
-FROM rust:1.75-slim AS builder
+FROM rust:slim AS builder
 
 WORKDIR /usr/src/app
 # Copy the entire workspace to satisfy Cargo.toml workspace members
