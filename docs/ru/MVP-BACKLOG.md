@@ -25,10 +25,10 @@
 ## Фаза 2: Сетевой слой и Сигнализация (Оценка: 4 недели)
 **Цель:** Полноценное P2P подключение через WAN с пробитием NAT и авторизацией.
 
-- [ ] **TASK-2.1:** Signal Server (`lumina-signal-server`).
-  - [ ] Реализация Actor-модели на `tokio`.
-  - [ ] Хранилище сессий in-memory (с опциональным Redis).
-  - [ ] REST API и WebSocket-эндпоинты для обмена IP-адресами.
+- [x] **TASK-2.1:** Signal Server (`lumina-signal-server`).
+  - [x] Реализация Actor-модели на `tokio`.
+  - [x] Хранилище сессий in-memory (с опциональным Redis).
+  - [x] REST API и WebSocket-эндпоинты для обмена IP-адресами.
 - [ ] **TASK-2.2:** Подключение Клиента к Signal Server.
   - [ ] Логика регистрации `PublicKey` и поддержания сессии.
 - [ ] **TASK-2.3:** NAT Traversal (STUN).

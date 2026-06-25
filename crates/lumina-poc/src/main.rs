@@ -50,15 +50,18 @@ fn main() {
                         )
                         .unwrap();
                     
+                    use rayon::prelude::*;
+                    
                     let mut buffer = surface.buffer_mut().unwrap();
                     
-                    // Convert RGBA from xcap to XRGB (0x00RRGGBB) for softbuffer
-                    for (i, pixel) in frame.data.chunks_exact(4).enumerate() {
+                    // Convert RGBA from xcap to XRGB (0x00RRGGBB) for softbuffer in parallel
+                    // This dramatically speeds up rendering on large 4K Retina screens.
+                    buffer.par_iter_mut().zip(frame.data.par_chunks_exact(4)).for_each(|(dest, pixel)| {
                         let r = pixel[0] as u32;
                         let g = pixel[1] as u32;
                         let b = pixel[2] as u32;
-                        buffer[i] = b | (g << 8) | (r << 16);
-                    }
+                        *dest = b | (g << 8) | (r << 16);
+                    });
                     
                     buffer.present().unwrap();
                 }
