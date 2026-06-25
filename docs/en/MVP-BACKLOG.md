@@ -32,13 +32,13 @@ This document outlines the development plan for LuminaRemote, divided into phase
 - [x] **TASK-2.2:** Client Connection to Signal Server.
   - [x] `PublicKey` registration logic and session maintenance.
 - [x] **TASK-2.3:** NAT Traversal (STUN).
-  - [x] Exchange ICE candidates and perform Hole Punching.
 - [x] **TASK-2.4:** Basic Relay Server.
 
 ## Phase 3: LAN & Adaptivity (Estimated: 3 weeks)
 **Goal:** Work in any network, instant LAN connection, dynamic QoS.
 
-- [ ] **TASK-3.1:** mDNS discovery.
+- [x] **TASK-3.1:** Local Discovery (mDNS).
+  - [x] Host discovery in LAN without internet.
 - [ ] **TASK-3.2:** Direct LAN connection algorithms.
 - [ ] **TASK-3.3:** Adaptive Bitrate (QoS).
 - [ ] **TASK-3.4:** Screen capture optimization (Dirty Rects).
