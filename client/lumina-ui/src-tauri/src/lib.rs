@@ -163,28 +163,28 @@ use tauri::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Start background mDNS advertisement so other computers on the LAN can find us!
-    tokio::spawn(async move {
-        let my_id = get_local_device_id();
-        // In a real app, QUIC binds to a dynamic port. For the Alpha test, we use 4433.
-        let port = 4433; 
-        match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
-            Ok(_daemon) => {
-                println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
-                // Keep the daemon alive
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-                }
-            }
-            Err(e) => {
-                println!("[Lumina] Failed to advertise mDNS: {}", e);
-            }
-        }
-    });
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Start background mDNS advertisement so other computers on the LAN can find us!
+            tauri::async_runtime::spawn(async move {
+                let my_id = get_local_device_id();
+                // In a real app, QUIC binds to a dynamic port. For the Alpha test, we use 4433.
+                let port = 4433; 
+                match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
+                    Ok(_daemon) => {
+                        println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
+                        // Keep the daemon alive
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                        }
+                    }
+                    Err(e) => {
+                        println!("[Lumina] Failed to advertise mDNS: {}", e);
+                    }
+                }
+            });
+
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
