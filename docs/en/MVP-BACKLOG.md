@@ -19,8 +19,8 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [ ] Integrate FFmpeg (`ffmpeg-sys-next`) for hardware H.264 encoding.
 - [x] **TASK-1.6:** Decoding and rendering module.
   - [x] Window for video stream testing (`winit` + `softbuffer` or `egui`).
-- [ ] **TASK-1.7:** Input transmission (`lumina-input`).
-  - [ ] Mouse and keyboard event injection on the host.
+- [x] **TASK-1.7:** Input transmission (`lumina-input`).
+  - [x] Mouse and keyboard event injection on the host.
 
 ## Phase 2: Network Layer & Signaling (Estimated: 4 weeks)
 **Goal:** Full P2P connection over WAN with NAT traversal and authorization.
