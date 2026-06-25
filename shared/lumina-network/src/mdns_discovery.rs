@@ -68,3 +68,23 @@ pub async fn discover_local_host(
         Err(_) => Err("mDNS LAN discovery timed out".to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore] // Flaky on loopback interfaces
+    async fn test_mdns_advertise_and_discover() {
+        let session_id = "TEST-MDNS-1234";
+        // Start advertiser on a random port
+        let _daemon = advertise_local_service(55555, session_id).expect("Failed to advertise");
+
+        // Try to discover it (with 5 seconds timeout)
+        let addr = discover_local_host(session_id, 5).await;
+        
+        assert!(addr.is_ok(), "Failed to discover advertised mDNS service: {:?}", addr.err());
+        let addr = addr.unwrap();
+        assert_eq!(addr.port(), 55555);
+    }
+}

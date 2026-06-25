@@ -11,3 +11,16 @@ pub fn generate_dummy_certificate() -> (Vec<Certificate>, PrivateKey) {
     let cert_der = Certificate(cert.serialize_der().unwrap());
     (vec![cert_der], key)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_dummy_certificate() {
+        let (certs, key) = generate_dummy_certificate();
+        assert!(!certs.is_empty(), "Certificate chain should not be empty");
+        assert!(!certs[0].0.is_empty(), "First certificate should have data");
+        assert!(!key.0.is_empty(), "Private key should have data");
+    }
+}
