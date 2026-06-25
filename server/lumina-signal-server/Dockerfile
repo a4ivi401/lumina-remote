@@ -1,15 +1,11 @@
 FROM rust:1.75-slim AS builder
 
 WORKDIR /usr/src/app
-# Copy the workspace manifests
-COPY Cargo.toml ./
-COPY server/lumina-signal-server/Cargo.toml server/lumina-signal-server/
-
-# We only need the signal server, so we copy its source
-COPY server/lumina-signal-server/src server/lumina-signal-server/src
+# Copy the entire workspace to satisfy Cargo.toml workspace members
+COPY . .
 
 # Build the signal server in release mode
-RUN cargo build --release --manifest-path server/lumina-signal-server/Cargo.toml
+RUN cargo build --release -p lumina-signal-server
 
 # Production Image
 FROM debian:bookworm-slim
