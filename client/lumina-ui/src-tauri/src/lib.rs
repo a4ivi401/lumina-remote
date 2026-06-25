@@ -57,6 +57,43 @@ fn get_saved_machines(app: tauri::AppHandle) -> Result<Vec<SavedMachine>, String
     Ok(machines)
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+struct AppConfig {
+    signal_server: String,
+    stun_server: String,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            signal_server: "wss://lumina.a4ivi4.dev/ws".to_string(),
+            stun_server: "stun.l.google.com:19302".to_string(),
+        }
+    }
+}
+
+fn get_config_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    if !app_data.exists() {
+        fs::create_dir_all(&app_data).map_err(|e| e.to_string())?;
+    }
+    Ok(app_data.join("config.json"))
+}
+
+fn load_config(app: &tauri::AppHandle) -> Result<AppConfig, String> {
+    let file_path = get_config_file(app)?;
+    if !file_path.exists() {
+        let default_config = AppConfig::default();
+        let content = serde_json::to_string_pretty(&default_config).map_err(|e| e.to_string())?;
+        fs::write(file_path, content).map_err(|e| e.to_string())?;
+        return Ok(default_config);
+    }
+    
+    let content = fs::read_to_string(file_path).map_err(|e| e.to_string())?;
+    let config: AppConfig = serde_json::from_str(&content).unwrap_or_else(|_| AppConfig::default());
+    Ok(config)
+}
+
 #[tauri::command]
 async fn connect_to_device(
     app: tauri::AppHandle,
@@ -64,6 +101,17 @@ async fn connect_to_device(
     pin: String,
     save_machine: bool,
 ) -> Result<String, String> {
+    // 1. Load user configuration (so self-hosting is possible)
+    let config = load_config(&app)?;
+
+    // 2. Initialize our Connection Manager pointing to the configured domains
+    let _manager = lumina_network::manager::ConnectionManager::new(
+        config.stun_server,
+        config.signal_server,
+    );
+
+    // TODO: In the E2E phase, we will invoke `manager.establish_path(&partner_id).await` here.
+    
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
     
     if pin.len() < 12 {

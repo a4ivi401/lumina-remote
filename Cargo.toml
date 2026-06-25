@@ -9,3 +9,10 @@ members = [
     "server/*",
     "shared/*"
 ]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"

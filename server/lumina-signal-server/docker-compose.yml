@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  signal-server:
+    build:
+      context: ../../
+      dockerfile: server/lumina-signal-server/Dockerfile
+    ports:
+      - "3000:3000"
+    restart: always
+    environment:
+      - RUST_LOG=info
