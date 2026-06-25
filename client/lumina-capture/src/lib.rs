@@ -9,7 +9,7 @@ pub mod xcap_capture;
 pub use frame::Frame;
 
 /// Abstract trait for screen capture to allow swapping backends later.
-pub trait CaptureDevice: Send {
+pub trait CaptureDevice {
     fn capture_frame(&mut self) -> Result<Frame, String>;
     fn get_width(&self) -> u32;
     fn get_height(&self) -> u32;

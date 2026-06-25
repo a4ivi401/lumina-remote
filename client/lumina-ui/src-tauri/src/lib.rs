@@ -349,40 +349,49 @@ pub fn run() {
                                                     });
                                                     
                                                     // Spawn Video Writer Loop
-                                                    if let Ok(mut capturer) = lumina_capture::create_capture_device() {
-                                                        loop {
-                                                            if let Ok(frame) = capturer.capture_frame() {
-                                                                // Compress to JPEG
-                                                                use image::{ImageBuffer, Rgba};
-                                                                use std::io::Cursor;
-                                                                
-                                                                let img: Option<ImageBuffer<Rgba<u8>, Vec<u8>>> = ImageBuffer::from_raw(frame.width, frame.height, frame.data);
-                                                                if let Some(img) = img {
-                                                                    let mut bytes: Vec<u8> = Vec::new();
-                                                                    let mut cursor = Cursor::new(&mut bytes);
-                                                                    if image::write_buffer_with_format(
-                                                                        &mut cursor, 
-                                                                        &img, 
-                                                                        frame.width, 
-                                                                        frame.height, 
-                                                                        image::ColorType::Rgba8, 
-                                                                        image::ImageFormat::Jpeg
-                                                                    ).is_ok() {
-                                                                        let size = bytes.len() as u32;
-                                                                        // Send Size + Bytes
-                                                                        if write_half.write_all(&size.to_be_bytes()).await.is_err() {
-                                                                            break;
-                                                                        }
-                                                                        if write_half.write_all(&bytes).await.is_err() {
-                                                                            break;
+                                                    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
+                                                    
+                                                    std::thread::spawn(move || {
+                                                        if let Ok(mut capturer) = lumina_capture::create_capture_device() {
+                                                            loop {
+                                                                if let Ok(frame) = capturer.capture_frame() {
+                                                                    use image::{ImageBuffer, Rgba};
+                                                                    use std::io::Cursor;
+                                                                    
+                                                                    let img: Option<ImageBuffer<Rgba<u8>, Vec<u8>>> = ImageBuffer::from_raw(frame.width, frame.height, frame.data);
+                                                                    if let Some(img) = img {
+                                                                        let mut bytes: Vec<u8> = Vec::new();
+                                                                        let mut cursor = Cursor::new(&mut bytes);
+                                                                        if image::write_buffer_with_format(
+                                                                            &mut cursor, 
+                                                                            &img, 
+                                                                            frame.width, 
+                                                                            frame.height, 
+                                                                            image::ColorType::Rgba8, 
+                                                                            image::ImageFormat::Jpeg
+                                                                        ).is_ok() {
+                                                                            if frame_tx.blocking_send(bytes).is_err() {
+                                                                                break;
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
+                                                                std::thread::sleep(std::time::Duration::from_millis(33));
                                                             }
-                                                            // Target ~30fps
-                                                            tokio::time::sleep(tokio::time::Duration::from_millis(33)).await;
                                                         }
-                                                    }
+                                                    });
+
+                                                    tokio::spawn(async move {
+                                                        while let Some(bytes) = frame_rx.recv().await {
+                                                            let size = bytes.len() as u32;
+                                                            if write_half.write_all(&size.to_be_bytes()).await.is_err() {
+                                                                break;
+                                                            }
+                                                            if write_half.write_all(&bytes).await.is_err() {
+                                                                break;
+                                                            }
+                                                        }
+                                                    });
                                                 } else {
                                                     println!("[Lumina] Invalid PIN. Expected: {}, Got: {}", expected_pin, received_pin);
                                                     let _ = socket.write_all(b"REJECTED\n").await;

@@ -24,7 +24,7 @@ pub struct WinCapture {
 #[cfg(target_os = "windows")]
 impl WinCapture {
     pub fn new() -> Result<Self, String> {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (_tx, rx) = std::sync::mpsc::channel();
         
         // This is a simplified wrapper. The real `windows-capture` requires 
         // starting a background thread and handling the frames via a trait.
