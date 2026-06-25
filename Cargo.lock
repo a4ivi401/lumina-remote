@@ -2996,7 +2996,12 @@ dependencies = [
 name = "lumina-ui"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
+ "image 0.24.9",
+ "lazy_static",
+ "lumina-capture",
  "lumina-core",
+ "lumina-input",
  "lumina-network",
  "rand 0.8.6",
  "serde",

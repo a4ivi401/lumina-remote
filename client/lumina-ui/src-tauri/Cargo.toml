@@ -26,4 +26,8 @@ lumina-core = { path = "../../../shared/lumina-core" }
 lumina-network = { path = "../../../shared/lumina-network" }
 rand = "0.8"
 tokio = { version = "1.32", features = ["full"] }
-
+lumina-capture = { path = "../../lumina-capture" }
+lumina-input = { path = "../../lumina-input" }
+image = "0.24"
+lazy_static = "1.4"
+base64 = "0.21"

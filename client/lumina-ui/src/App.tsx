@@ -23,16 +23,29 @@ function App() {
   const [pin, setPin] = useState("");
   const [saveMachine, setSaveMachine] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   
   const [savedMachines, setSavedMachines] = useState<SavedMachine[]>([]);
   const [lanMachines, setLanMachines] = useState<SavedMachine[]>([]);
   
+  // Host PIN
+  const [hostPinRaw, setHostPinRaw] = useState("••••-••••-••••");
+  const hostPin = useScrambleText(hostPinRaw, hostPinRaw !== "••••-••••-••••");
+
+  // Video Stream State
+  const [videoFrame, setVideoFrame] = useState<string | null>(null);
+
   // Incoming Connection State
   const [incomingConnection, setIncomingConnection] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<string>("get_local_device_id")
       .then(setDeviceIdRaw)
+      .catch(console.error);
+      
+    // Generate host pin immediately
+    invoke<string>("generate_session_pin")
+      .then(setHostPinRaw)
       .catch(console.error);
       
     loadSavedMachines();
@@ -50,14 +63,20 @@ function App() {
       .catch(console.error);
 
     // Listen for incoming LAN connections
-    const unlisten = listen<string>("incoming-connection", (event) => {
+    const unlistenConnection = listen<string>("incoming-connection", (event) => {
       console.log("Incoming connection from:", event.payload);
       setIncomingConnection(event.payload);
     });
 
+    // Listen for video frames
+    const unlistenVideo = listen<string>("video-frame", (event) => {
+      setVideoFrame(`data:image/jpeg;base64,${event.payload}`);
+    });
+
     return () => {
       clearInterval(lanInterval);
-      unlisten.then(f => f());
+      unlistenConnection.then(f => f());
+      unlistenVideo.then(f => f());
     };
   }, []);
 
@@ -79,20 +98,65 @@ function App() {
     e.preventDefault();
     setIsConnecting(true);
     try {
-      const response = await invoke<string>("connect_to_device", { 
-        partnerId, 
-        pin, 
-        saveMachine 
-      });
-      alert(response);
-      setShowAuthPopup(false);
-      loadSavedMachines(); // Reload machines after successful save
+      setIsConnecting(true);
+      invoke<string>("connect_to_device", { partnerId, pin, saveMachine })
+        .then(() => {
+          setIsConnecting(false);
+          setShowAuthPopup(false);
+          setIsConnected(true);
+        })
+        .catch((err) => {
+          setIsConnecting(false);
+          alert(err);
+        });
     } catch (err) {
       alert(`Connection failed: ${err}`);
-    } finally {
-      setIsConnecting(false);
     }
   };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  const formatDeviceId = (val: string) => {
+    const cleaned = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (cleaned.length <= 3) return cleaned;
+    if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`;
+  };
+
+  const formatPin = (val: string) => {
+    const cleaned = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (cleaned.length <= 4) return cleaned;
+    if (cleaned.length <= 8) return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+    return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 8)}-${cleaned.slice(8, 12)}`;
+  };
+
+  if (isConnected) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden" data-tauri-drag-region>
+        <div className="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-black/80 to-transparent z-10 pointer-events-none" />
+        {videoFrame ? (
+          <img 
+            src={videoFrame} 
+            alt="Remote Desktop Stream" 
+            className="w-full h-full object-contain pointer-events-none"
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-gray-400">Ожидание видеопотока...</p>
+          </div>
+        )}
+        <button 
+          onClick={() => setIsConnected(false)}
+          className="absolute top-4 right-4 z-20 px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white rounded-lg transition-colors backdrop-blur-md"
+        >
+          Отключиться
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0E0F14] text-white flex flex-col p-6 overflow-hidden relative font-sans">
@@ -124,8 +188,9 @@ function App() {
                 <input 
                   type="text" 
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.toUpperCase())}
+                  onChange={(e) => setPin(formatPin(e.target.value))}
                   placeholder="XXXX-XXXX-XXXX"
+                  maxLength={14}
                   className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-center text-xl font-mono tracking-widest text-indigo-300 placeholder-gray-700 outline-none focus:border-indigo-500/50 transition-all"
                   autoFocus
                 />
@@ -243,6 +308,30 @@ function App() {
                   <Copy size={18} />
                 </div>
               </div>
+
+              {/* Host PIN Display */}
+              <div className="mt-4">
+                <label className="text-[10px] text-gray-500 mb-1 uppercase tracking-widest block">Session PIN (Пароль)</label>
+                <div className="flex items-center gap-2">
+                  <div className="bg-[#0E0F14] rounded-xl p-3 border border-[#2A2B32] flex-1 text-center font-mono text-xl tracking-widest text-emerald-400">
+                    {hostPin}
+                  </div>
+                  <button 
+                    onClick={() => copyToClipboard(hostPinRaw)}
+                    className="p-3 bg-[#0E0F14] border border-[#2A2B32] hover:border-indigo-500/50 hover:text-indigo-400 rounded-xl transition-colors text-gray-400"
+                    title="Копировать пароль"
+                  >
+                    <Copy size={20} />
+                  </button>
+                  <button 
+                    onClick={() => invoke<string>("generate_session_pin").then(setHostPinRaw)}
+                    className="p-3 bg-[#0E0F14] border border-[#2A2B32] hover:border-indigo-500/50 hover:text-indigo-400 rounded-xl transition-colors text-gray-400"
+                    title="Сгенерировать новый пароль"
+                  >
+                    <Settings size={20} />
+                  </button>
+                </div>
+              </div>
             </div>
             
             <div className="mt-6 flex items-center gap-2 text-xs text-emerald-400">
@@ -263,8 +352,9 @@ function App() {
               <input 
                 type="text" 
                 value={partnerId}
-                onChange={(e) => setPartnerId(e.target.value.toUpperCase())}
-                placeholder="XXXX-XXXX-XXXX"
+                onChange={(e) => setPartnerId(formatDeviceId(e.target.value))}
+                placeholder="LMN-XXXX-XXXX"
+                maxLength={13}
                 className="w-full bg-[#0E0F14] border border-[#2A2B32] rounded-xl py-4 pl-12 pr-4 text-xl font-mono tracking-widest text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors"
               />
             </div>

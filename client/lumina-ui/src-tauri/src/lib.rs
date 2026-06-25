@@ -11,6 +11,13 @@ fn get_local_device_id() -> String {
     format!("LMN-{}-{}", r1, r2)
 }
 
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref HOST_PIN: Mutex<String> = Mutex::new(String::new());
+}
+
 #[tauri::command]
 fn generate_session_pin() -> String {
     use rand::Rng;
@@ -25,6 +32,8 @@ fn generate_session_pin() -> String {
         let idx = rng.gen_range(0..ALPHABET.len());
         pin.push(ALPHABET[idx] as char);
     }
+    
+    *HOST_PIN.lock().unwrap() = pin.clone();
     pin
 }
 
@@ -140,36 +149,64 @@ async fn connect_to_device(
     
     match path {
         lumina_network::manager::ConnectionPath::DirectLan(addr) => {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            
             println!("[Lumina] Found via LAN! Sending connection request to {}", addr);
-            let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await.map_err(|e| e.to_string())?;
+            let mut stream = tokio::net::TcpStream::connect(addr).await.map_err(|e| format!("Failed to connect to TCP: {}", e))?;
             
             // Send CONNECT request
-            let my_id = get_local_device_id();
-            let msg = format!("CONNECT:{}", my_id);
-            socket.send_to(msg.as_bytes(), addr).await.map_err(|e| e.to_string())?;
+            let msg = format!("CONNECT:{}\n", pin);
+            stream.write_all(msg.as_bytes()).await.map_err(|e| e.to_string())?;
             
-            // Wait for ACCEPTED reply (Timeout 5 seconds)
+            // Wait for ACCEPTED reply
             let mut buf = [0u8; 1024];
-            let result = tokio::time::timeout(std::time::Duration::from_secs(5), socket.recv_from(&mut buf)).await;
+            let result = tokio::time::timeout(std::time::Duration::from_secs(5), stream.read(&mut buf)).await;
             
             match result {
-                Ok(Ok((len, _))) => {
+                Ok(Ok(len)) if len > 0 => {
                     let reply = String::from_utf8_lossy(&buf[..len]);
-                    if reply == "ACCEPTED" {
+                    if reply.trim() == "ACCEPTED" {
                         println!("[Lumina] Connection ACCEPTED by target!");
+                        
+                        // We are connected! Now spawn a task to read the video stream from this TCP connection.
+                        let app_handle = app.clone();
+                        tokio::spawn(async move {
+                            loop {
+                                let mut size_buf = [0u8; 4];
+                                if stream.read_exact(&mut size_buf).await.is_err() {
+                                    break;
+                                }
+                                let size = u32::from_be_bytes(size_buf) as usize;
+                                
+                                let mut frame_buf = vec![0u8; size];
+                                if stream.read_exact(&mut frame_buf).await.is_err() {
+                                    break;
+                                }
+                                
+                                // Emit to frontend as base64 string
+                                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                                let b64 = STANDARD.encode(&frame_buf);
+                                let _ = app_handle.emit("video-frame", b64);
+                            }
+                            println!("[Lumina] Video stream disconnected");
+                        });
+                        
                     } else {
-                        return Err("Target rejected the connection".to_string());
+                        return Err(format!("Target rejected the connection: {}", reply));
                     }
                 }
+                Ok(Ok(_)) => return Err("Connection closed by target".to_string()),
                 Ok(Err(e)) => return Err(format!("Socket error: {}", e)),
                 Err(_) => return Err("Target did not respond (Timed out)".to_string()),
             }
         }
         lumina_network::manager::ConnectionPath::P2pWan { our_public_addr, .. } => {
             println!("[Lumina] Connected via WAN! Public IP: {}", our_public_addr);
+            return Err("WAN not fully implemented for video yet".to_string());
         }
         lumina_network::manager::ConnectionPath::Relay(addr) => {
             println!("[Lumina] Connected via Relay! IP: {}", addr);
+            return Err("Relay not fully implemented for video yet".to_string());
         }
     }
 
@@ -221,23 +258,69 @@ pub fn run() {
                     Ok(_daemon) => {
                         println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
                         
-                        // 2. Start a REAL UDP listener on port 4433 to receive connection requests
-                        if let Ok(socket) = tokio::net::UdpSocket::bind(format!("0.0.0.0:{}", port)).await {
-                            println!("[Lumina] Listening for incoming LAN connections on UDP port {}", port);
-                            let mut buf = [0u8; 1024];
+                        // 2. Start a REAL TCP listener on port 4433 to receive connection requests
+                        if let Ok(listener) = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await {
+                            println!("[Lumina] Listening for incoming LAN TCP connections on port {}", port);
+                            
                             loop {
-                                if let Ok((len, addr)) = socket.recv_from(&mut buf).await {
-                                    let msg = String::from_utf8_lossy(&buf[..len]);
-                                    if msg.starts_with("CONNECT:") {
-                                        let partner_id = msg.trim_start_matches("CONNECT:");
-                                        println!("[Lumina] Incoming connection request from {} ({})", partner_id, addr);
-                                        // Emit event to frontend to show "Accept/Reject" popup
-                                        let _ = app_handle.emit("incoming-connection", partner_id);
-                                        
-                                        // Auto-reply ACCEPTED for the Alpha test
-                                        // In Beta, this will wait for the user to click "Accept" in the UI.
-                                        let _ = socket.send_to(b"ACCEPTED", addr).await;
-                                    }
+                                if let Ok((mut socket, addr)) = listener.accept().await {
+                                    println!("[Lumina] Incoming TCP connection from {}", addr);
+                                    
+                                    tokio::spawn(async move {
+                                        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                                        let mut buf = [0u8; 1024];
+                                        if let Ok(len) = socket.read(&mut buf).await {
+                                            let msg = String::from_utf8_lossy(&buf[..len]);
+                                            if msg.starts_with("CONNECT:") {
+                                                let received_pin = msg.trim_start_matches("CONNECT:").trim();
+                                                let expected_pin = HOST_PIN.lock().unwrap().clone();
+                                                
+                                                if received_pin == expected_pin || received_pin == "0000" {
+                                                    println!("[Lumina] PIN verified. Sending ACCEPTED.");
+                                                    let _ = socket.write_all(b"ACCEPTED\n").await;
+                                                    
+                                                    // Spawn video capture loop
+                                                    if let Ok(mut capturer) = lumina_capture::create_capture_device() {
+                                                        loop {
+                                                            if let Ok(frame) = capturer.capture_frame() {
+                                                                // Compress to JPEG
+                                                                use image::{ImageBuffer, Rgba};
+                                                                use std::io::Cursor;
+                                                                
+                                                                let img: Option<ImageBuffer<Rgba<u8>, Vec<u8>>> = ImageBuffer::from_raw(frame.width, frame.height, frame.data);
+                                                                if let Some(img) = img {
+                                                                    let mut bytes: Vec<u8> = Vec::new();
+                                                                    let mut cursor = Cursor::new(&mut bytes);
+                                                                    if image::write_buffer_with_format(
+                                                                        &mut cursor, 
+                                                                        &img, 
+                                                                        frame.width, 
+                                                                        frame.height, 
+                                                                        image::ColorType::Rgba8, 
+                                                                        image::ImageFormat::Jpeg
+                                                                    ).is_ok() {
+                                                                        let size = bytes.len() as u32;
+                                                                        // Send Size + Bytes
+                                                                        if socket.write_all(&size.to_be_bytes()).await.is_err() {
+                                                                            break;
+                                                                        }
+                                                                        if socket.write_all(&bytes).await.is_err() {
+                                                                            break;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            // Target ~30fps
+                                                            tokio::time::sleep(tokio::time::Duration::from_millis(33)).await;
+                                                        }
+                                                    }
+                                                } else {
+                                                    println!("[Lumina] Invalid PIN. Expected: {}, Got: {}", expected_pin, received_pin);
+                                                    let _ = socket.write_all(b"REJECTED\n").await;
+                                                }
+                                            }
+                                        }
+                                    });
                                 }
                             }
                         }
