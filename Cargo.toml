@@ -6,7 +6,8 @@ members = [
     "client/lumina-encoder",
     "client/lumina-input",
     "client/lumina-ui/src-tauri",
-    "server/*",
+    "server/lumina-signal-server",
+    "server/lumina-relay-server",
     "shared/*"
 ]
 
