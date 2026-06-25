@@ -31,7 +31,8 @@
   - [ ] REST/WebSocket для обміну IP.
 - [x] **TASK-2.2:** Підключення Клієнта до Signal Server.
   - [x] Логіка реєстрації `PublicKey` та підтримки сесії.
-- [ ] **TASK-2.3:** NAT Traversal (STUN).
+- [x] **TASK-2.3:** NAT Traversal (STUN).
+  - [x] Обмін ICE-кандидатами та Hole Punching (пробиття NAT).
 - [ ] **TASK-2.4:** Базовий Relay Server.
 
 ## Фаза 3: Локальна мережа (LAN) та Адаптивність (Оцінка: 3 тижні)

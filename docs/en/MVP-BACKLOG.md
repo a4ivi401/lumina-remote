@@ -31,7 +31,8 @@ This document outlines the development plan for LuminaRemote, divided into phase
   - [ ] REST/WebSocket for IP exchange.
 - [x] **TASK-2.2:** Client Connection to Signal Server.
   - [x] `PublicKey` registration logic and session maintenance.
-- [ ] **TASK-2.3:** NAT Traversal (STUN).
+- [x] **TASK-2.3:** NAT Traversal (STUN).
+  - [x] Exchange ICE candidates and perform Hole Punching.
 - [ ] **TASK-2.4:** Basic Relay Server.
 
 ## Phase 3: LAN & Adaptivity (Estimated: 3 weeks)
