@@ -17,5 +17,4 @@ windows = { version = "0.52", features = [
     "Win32_Foundation"
 ] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-libva = "0.2"
+
