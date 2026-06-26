@@ -8,7 +8,7 @@ lumina-capture = { path = "../lumina-capture" }
 lumina-protocol = { path = "../../shared/lumina-protocol" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-videotoolbox = "0.18"
+video-toolbox = "0.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.52", features = [

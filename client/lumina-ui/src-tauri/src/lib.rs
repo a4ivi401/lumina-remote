@@ -307,6 +307,7 @@ pub fn run() {
                                 if let Some(incoming) = endpoint.accept().await {
                                     println!("[Lumina] Incoming QUIC connection...");
                                     
+                                    let app_handle = app_handle.clone();
                                     tokio::spawn(async move {
                                         match incoming.await {
                                             Ok(conn) => {
