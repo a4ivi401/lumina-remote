@@ -38,14 +38,12 @@ lazy_static! {
     static ref DEVICE_ID: Mutex<String> = Mutex::new(String::new());
     static ref HOST_PIN: Mutex<String> = Mutex::new(String::new());
     static ref INPUT_SENDER: Mutex<Option<mpsc::UnboundedSender<InputEvent>>> = Mutex::new(None);
-    static ref PENDING_CONNECTION: Mutex<Option<tokio::sync::oneshot::Sender<bool>>> = Mutex::new(None);
 }
 
 #[tauri::command]
 fn respond_to_connection(accept: bool) {
-    let mut lock = PENDING_CONNECTION.lock().unwrap();
-    if let Some(sender) = lock.take() {
-        let _ = sender.send(accept);
+    if !accept {
+        *HOST_PIN.lock().unwrap() = String::new();
     }
 }
 
@@ -449,18 +447,7 @@ pub fn run() {
                                     }
                                     println!("[Lumina] Handshake verified. Connection secure.");
                                     
-                                    let (tx, rx) = tokio::sync::oneshot::channel();
-                                    *PENDING_CONNECTION.lock().unwrap() = Some(tx);
-                                    
-                                    if let Ok(accepted) = rx.await {
-                                        if !accepted {
-                                            println!("[Lumina] Connection rejected by user.");
-                                            return;
-                                        }
-                                    } else {
-                                        return;
-                                    }
-                                    
+
                                     let mut send_video = match conn.open_uni().await {
                                         Ok(s) => s,
                                         Err(e) => { println!("Failed to open video stream: {}", e); return; }
