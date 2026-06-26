@@ -38,6 +38,9 @@ function App() {
   // Incoming Connection State
   const [incomingConnection, setIncomingConnection] = useState<string | null>(null);
 
+  // Signal Server State
+  const [signalServerConnected, setSignalServerConnected] = useState<boolean | null>(null);
+
   useEffect(() => {
     invoke<string>("get_local_device_id")
       .then(setDeviceIdRaw)
@@ -50,17 +53,25 @@ function App() {
       
     loadSavedMachines();
     
-    // Poll LAN devices every 5 seconds
-    const lanInterval = setInterval(() => {
+    // Poll LAN devices and Signal Server every 5 seconds
+    const interval = setInterval(() => {
       invoke<SavedMachine[]>("get_local_network_devices")
         .then(setLanMachines)
         .catch(console.error);
+        
+      invoke<boolean>("check_signal_server")
+        .then(setSignalServerConnected)
+        .catch(() => setSignalServerConnected(false));
     }, 5000);
     
     // Initial fetch
     invoke<SavedMachine[]>("get_local_network_devices")
       .then(setLanMachines)
       .catch(console.error);
+      
+    invoke<boolean>("check_signal_server")
+      .then(setSignalServerConnected)
+      .catch(() => setSignalServerConnected(false));
 
     // Listen for incoming LAN connections
     const unlistenConnection = listen<string>("incoming-connection", (event) => {
@@ -74,7 +85,7 @@ function App() {
     });
 
     return () => {
-      clearInterval(lanInterval);
+      clearInterval(interval);
       unlistenConnection.then(f => f());
       unlistenVideo.then(f => f());
     };
@@ -377,9 +388,19 @@ function App() {
               </div>
             </div>
             
-            <div className="mt-6 flex items-center gap-2 text-xs text-emerald-400">
-              <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-              Готов к подключениям
+            <div className="mt-6 flex flex-col gap-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-400">
+                <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                Служба локальной сети работает (LAN)
+              </div>
+              <div className={`flex items-center gap-2 ${signalServerConnected === true ? 'text-emerald-400' : signalServerConnected === false ? 'text-red-400' : 'text-gray-400'}`}>
+                <div className={`w-2 h-2 rounded-full ${signalServerConnected === true ? 'bg-emerald-400' : signalServerConnected === false ? 'bg-red-400' : 'bg-gray-400 animate-pulse'}`}></div>
+                {signalServerConnected === true 
+                  ? 'Связь с сигнальным сервером установлена (WAN)' 
+                  : signalServerConnected === false 
+                    ? 'Нет связи с сигнальным сервером' 
+                    : 'Проверка связи с сервером...'}
+              </div>
             </div>
           </div>
 

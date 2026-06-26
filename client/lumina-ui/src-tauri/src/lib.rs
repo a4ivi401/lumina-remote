@@ -121,6 +121,30 @@ fn load_config(app: &tauri::AppHandle) -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
+async fn check_signal_server(app: tauri::AppHandle) -> Result<bool, String> {
+    let config = load_config(&app)?;
+    let url = config.signal_server;
+    
+    let addr = if url.starts_with("wss://") {
+        let host = url.replace("wss://", "").split('/').next().unwrap().to_string();
+        if host.contains(':') { host } else { format!("{}:443", host) }
+    } else if url.starts_with("ws://") {
+        let host = url.replace("ws://", "").split('/').next().unwrap().to_string();
+        if host.contains(':') { host } else { format!("{}:80", host) }
+    } else {
+        return Ok(false);
+    };
+
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        tokio::net::TcpStream::connect(&addr)
+    ).await {
+        Ok(Ok(_)) => Ok(true),
+        _ => Ok(false),
+    }
+}
+
+#[tauri::command]
 async fn get_local_network_devices(app: tauri::AppHandle) -> Result<Vec<SavedMachine>, String> {
     let local_id = get_local_device_id();
     let discovered = lumina_network::mdns_discovery::discover_all_local_hosts(2).await?;
@@ -459,7 +483,8 @@ pub fn run() {
             connect_to_device,
             get_saved_machines,
             get_local_network_devices,
-            send_input
+            send_input,
+            check_signal_server
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,15 +1,7 @@
 use crate::frame::Frame;
 use crate::CaptureDevice;
 
-#[cfg(target_os = "windows")]
-use windows_capture::{
-    capture::{Context, GraphicsCaptureApiHandler},
-    encoder::{VideoEncoder, VideoEncoderQuality},
-    frame::Frame as WinFrame,
-    graphics_capture_api::InternalCaptureControl,
-    monitor::Monitor,
-    settings::{ColorFormat, CursorCaptureSettings, DrawBorderSettings, Settings},
-};
+
 
 #[cfg(target_os = "windows")]
 pub struct WinCapture {

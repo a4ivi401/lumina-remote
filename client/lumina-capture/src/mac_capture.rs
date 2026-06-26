@@ -1,6 +1,6 @@
 use crate::frame::Frame;
 use crate::CaptureDevice;
-use std::time::Instant;
+
 
 #[cfg(target_os = "macos")]
 use crate::xcap_capture::XcapCapture;
