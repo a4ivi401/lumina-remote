@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { MonitorPlay, Copy, Settings, Search, Monitor, Plus, Command, X, ShieldCheck } from "lucide-react";
@@ -33,7 +33,9 @@ function App() {
   const hostPin = useScrambleText(hostPinRaw, hostPinRaw !== "••••-••••-••••");
 
   // Video Stream State
-  const [videoFrame, setVideoFrame] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const decoderRef = useRef<VideoDecoder | null>(null);
+  const [hasVideo, setHasVideo] = useState(false);
 
   // Incoming Connection State
   const [incomingConnection, setIncomingConnection] = useState<string | null>(null);
@@ -80,14 +82,59 @@ function App() {
     });
 
     // Listen for video frames
-    const unlistenVideo = listen<string>("video-frame", (event) => {
-      setVideoFrame(`data:image/jpeg;base64,${event.payload}`);
+    const unlistenVideo = listen<{ data: string, is_keyframe: boolean, timestamp_us: number }>("video-frame", (event) => {
+      if (!decoderRef.current && canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+        
+        const decoder = new VideoDecoder({
+          output(frame) {
+            setHasVideo(true);
+            if (canvasRef.current) {
+              if (canvasRef.current.width !== frame.displayWidth || canvasRef.current.height !== frame.displayHeight) {
+                canvasRef.current.width = frame.displayWidth;
+                canvasRef.current.height = frame.displayHeight;
+              }
+              ctx.drawImage(frame, 0, 0, canvasRef.current.width, canvasRef.current.height);
+            }
+            frame.close();
+          },
+          error(e) { console.error("VideoDecoder error:", e); }
+        });
+        
+        decoder.configure({ codec: 'avc1.42E01E' });
+        decoderRef.current = decoder;
+      }
+      
+      if (decoderRef.current && decoderRef.current.state === "configured") {
+        try {
+          const binaryString = atob(event.payload.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          const chunk = new EncodedVideoChunk({
+            type: event.payload.is_keyframe ? 'key' : 'delta',
+            timestamp: event.payload.timestamp_us,
+            data: bytes
+          });
+          
+          decoderRef.current.decode(chunk);
+        } catch (e) {
+          console.error("Failed to decode chunk", e);
+        }
+      }
     });
 
     return () => {
       clearInterval(interval);
       unlistenConnection.then(f => f());
       unlistenVideo.then(f => f());
+      if (decoderRef.current && decoderRef.current.state !== "closed") {
+        decoderRef.current.close();
+        decoderRef.current = null;
+      }
     };
   }, []);
 
@@ -186,20 +233,17 @@ function App() {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden" data-tauri-drag-region>
         <div className="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-black/80 to-transparent z-10 pointer-events-none" />
-        {videoFrame ? (
-          <img 
-            src={videoFrame} 
-            alt="Remote Desktop Stream" 
-            className="w-full h-full object-contain"
-            onMouseMove={handleMouseMove}
-            onClick={handleMouseClick}
-            onContextMenu={(e) => { e.preventDefault(); handleMouseClick(e); }}
-            draggable={false}
-          />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center">
+        <canvas 
+          ref={canvasRef}
+          className="w-full h-full object-contain absolute inset-0 z-0"
+          onMouseMove={handleMouseMove}
+          onClick={handleMouseClick}
+          onContextMenu={(e) => { e.preventDefault(); handleMouseClick(e); }}
+        />
+        {!hasVideo && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none bg-black">
             <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-gray-400">Ожидание видеопотока...</p>
+            <p className="text-gray-400">Получение защищенного H.264 видеопотока...</p>
           </div>
         )}
         <button 
@@ -296,15 +340,17 @@ function App() {
 
               <div className="flex gap-3 w-full mt-4">
                 <button 
-                  onClick={() => setIncomingConnection(null)}
+                  onClick={() => {
+                    invoke("respond_to_connection", { accept: false });
+                    setIncomingConnection(null);
+                  }}
                   className="flex-1 py-3 rounded-xl bg-red-500/10 text-red-400 font-medium hover:bg-red-500/20 transition-colors border border-red-500/20"
                 >
                   Отклонить
                 </button>
                 <button 
                   onClick={() => {
-                    // For alpha, the Rust backend automatically replies ACCEPTED,
-                    // but we dismiss the popup here.
+                    invoke("respond_to_connection", { accept: true });
                     setIncomingConnection(null);
                   }}
                   className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg shadow-emerald-600/20"

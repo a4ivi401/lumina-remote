@@ -6,3 +6,16 @@ edition = "2021"
 [dependencies]
 lumina-capture = { path = "../lumina-capture" }
 lumina-protocol = { path = "../../shared/lumina-protocol" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+videotoolbox = "0.18"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.52", features = [
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_Foundation"
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libva = "0.2"

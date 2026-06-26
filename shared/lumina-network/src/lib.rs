@@ -5,6 +5,9 @@ pub mod nat;
 pub mod mdns_discovery;
 pub mod manager;
 
+pub use quinn;
+pub use rustls;
+
 use crate::crypto::generate_dummy_certificate;
 use quinn::{ClientConfig, Endpoint, ServerConfig};
 use rustls::{client::ServerCertVerified, client::ServerCertVerifier, Certificate, Error as RustlsError, ServerName};
