@@ -278,10 +278,6 @@ async fn connect_to_device(
     
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
-    if pin.len() < 12 {
-        return Err("Invalid PIN format".into());
-    }
-    
     if save_machine {
         let file_path = get_machines_file(&app)?;
         let mut machines = get_saved_machines(app.clone()).unwrap_or_default();

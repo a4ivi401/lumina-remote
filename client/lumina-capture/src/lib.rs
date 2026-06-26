@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn test_capture_init() {
-        let capturer = XcapCapture::new();
+        let capturer = xcap_capture::XcapCapture::new();
         // The test might fail in CI or headless environments if there's no display server,
         // but on a real desktop it should pass.
         if let Ok(mut c) = capturer {
