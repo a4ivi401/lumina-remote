@@ -189,7 +189,11 @@ async fn connect_to_device(
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             
             println!("[Lumina] Found via LAN! Sending connection request to {}", addr);
-            let mut stream = tokio::net::TcpStream::connect(addr).await.map_err(|e| format!("Failed to connect to TCP: {}", e))?;
+            let connect_future = tokio::net::TcpStream::connect(addr);
+            let mut stream = tokio::time::timeout(std::time::Duration::from_secs(3), connect_future)
+                .await
+                .map_err(|_| "Connection timed out. Blocked by firewall?".to_string())?
+                .map_err(|e| format!("Failed to connect to TCP: {}", e))?;
             
             // Send CONNECT request
             let msg = format!("CONNECT:{}\n", pin);
@@ -376,31 +380,43 @@ pub fn run() {
                                                     let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
                                                     
                                                     std::thread::spawn(move || {
-                                                        if let Ok(mut capturer) = lumina_capture::create_capture_device() {
-                                                            loop {
-                                                                if let Ok(frame) = capturer.capture_frame() {
-                                                                    use image::{ImageBuffer, Rgba};
-                                                                    use std::io::Cursor;
-                                                                    
-                                                                    let img: Option<ImageBuffer<Rgba<u8>, Vec<u8>>> = ImageBuffer::from_raw(frame.width, frame.height, frame.data);
-                                                                    if let Some(img) = img {
-                                                                        let mut bytes: Vec<u8> = Vec::new();
-                                                                        let mut cursor = Cursor::new(&mut bytes);
-                                                                        if image::write_buffer_with_format(
-                                                                            &mut cursor, 
-                                                                            &img, 
-                                                                            frame.width, 
-                                                                            frame.height, 
-                                                                            image::ColorType::Rgba8, 
-                                                                            image::ImageFormat::Jpeg
-                                                                        ).is_ok() {
-                                                                            if frame_tx.blocking_send(bytes).is_err() {
-                                                                                break;
+                                                        match lumina_capture::create_capture_device() {
+                                                            Ok(mut capturer) => {
+                                                                println!("[Lumina] Capture device created successfully");
+                                                                loop {
+                                                                    match capturer.capture_frame() {
+                                                                        Ok(frame) => {
+                                                                            use image::{ImageBuffer, Rgba};
+                                                                            use std::io::Cursor;
+                                                                            
+                                                                            let img: Option<ImageBuffer<Rgba<u8>, Vec<u8>>> = ImageBuffer::from_raw(frame.width, frame.height, frame.data);
+                                                                            if let Some(img) = img {
+                                                                                let mut bytes: Vec<u8> = Vec::new();
+                                                                                let mut cursor = Cursor::new(&mut bytes);
+                                                                                if image::write_buffer_with_format(
+                                                                                    &mut cursor, 
+                                                                                    &img, 
+                                                                                    frame.width, 
+                                                                                    frame.height, 
+                                                                                    image::ColorType::Rgba8, 
+                                                                                    image::ImageFormat::Jpeg
+                                                                                ).is_ok() {
+                                                                                    if frame_tx.blocking_send(bytes).is_err() {
+                                                                                        println!("[Lumina] Video stream receiver dropped. Exiting capture loop.");
+                                                                                        break;
+                                                                                    }
+                                                                                }
                                                                             }
                                                                         }
+                                                                        Err(e) => {
+                                                                            println!("[Lumina] capture_frame error: {}", e);
+                                                                        }
                                                                     }
+                                                                    std::thread::sleep(std::time::Duration::from_millis(33));
                                                                 }
-                                                                std::thread::sleep(std::time::Duration::from_millis(33));
+                                                            }
+                                                            Err(e) => {
+                                                                println!("[Lumina] FATAL: Failed to create capture device: {}", e);
                                                             }
                                                         }
                                                     });

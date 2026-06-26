@@ -16,31 +16,7 @@ pub trait CaptureDevice {
 }
 
 pub fn create_capture_device() -> Result<Box<dyn CaptureDevice>, String> {
-    #[cfg(target_os = "macos")]
-    {
-        // Try native SCKit, fallback to Xcap
-        if let Ok(c) = mac_capture::MacCapture::new() {
-            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Try native DXGI, fallback to Xcap
-        if let Ok(c) = win_capture::WinCapture::new() {
-            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // For Linux, LinuxCapture wraps Xcap
-        if let Ok(c) = linux_capture::LinuxCapture::new() {
-            return Ok(Box::new(c) as Box<dyn CaptureDevice>);
-        }
-    }
-
-    // Universal Fallback
+    // For MVP, we universally use XcapCapture which works across Windows/Mac/Linux
     xcap_capture::XcapCapture::new().map(|c| Box::new(c) as Box<dyn CaptureDevice>)
 }
 
