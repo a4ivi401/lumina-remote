@@ -91,3 +91,14 @@ impl SignalingClient {
         self.sender.send(msg).await.map_err(|e| e.to_string())
     }
 }
+
+pub async fn connect_tunnel(url: &str, session_id: &str, role: &str) -> Result<(
+    futures_util::stream::SplitSink<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Message>,
+    futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>
+), String> {
+    let ws_url = format!("{}/tunnel/{}/{}", url, session_id, role);
+    let parsed_url = Url::parse(&ws_url).map_err(|e| format!("Invalid URL: {}", e))?;
+    
+    let (ws_stream, _) = connect_async(parsed_url.as_str()).await.map_err(|e| format!("WS Connect error: {}", e))?;
+    Ok(ws_stream.split())
+}

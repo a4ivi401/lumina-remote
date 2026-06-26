@@ -32,3 +32,5 @@ lumina-encoder = { path = "../../lumina-encoder" }
 image = "0.24"
 lazy_static = "1.4"
 base64 = "0.21"
+futures-util = "0.3.32"
+tokio-tungstenite = "0.29.0"

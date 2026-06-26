@@ -20,6 +20,10 @@ struct AppState {
     hosts: DashMap<String, mpsc::Sender<String>>,
     // Session ID -> Client's TX channel
     clients: DashMap<String, mpsc::Sender<String>>,
+    
+    // WebRTC/Relay Tunnel Channels
+    tunnel_hosts: DashMap<String, mpsc::Sender<Message>>,
+    tunnel_clients: DashMap<String, mpsc::Sender<Message>>,
 }
 
 /// The messages the Signal Server expects to receive.
@@ -40,10 +44,13 @@ async fn main() {
     let state = Arc::new(AppState {
         hosts: DashMap::new(),
         clients: DashMap::new(),
+        tunnel_hosts: DashMap::new(),
+        tunnel_clients: DashMap::new(),
     });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/tunnel/:session_id/:role", get(tunnel_handler))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -130,6 +137,68 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     });
 
     // If any one of the tasks complete (meaning connection closed or error), abort the other
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    }
+}
+
+use axum::extract::Path;
+
+async fn tunnel_handler(
+    ws: WebSocketUpgrade,
+    Path((session_id, role)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_tunnel_socket(socket, session_id, role, state))
+}
+
+async fn handle_tunnel_socket(socket: WebSocket, session_id: String, role: String, state: Arc<AppState>) {
+    let (mut sender, mut receiver) = socket.split();
+    
+    let (tx, mut rx) = mpsc::channel::<Message>(100);
+    
+    let mut send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    if role == "host" {
+        state.tunnel_hosts.insert(session_id.clone(), tx.clone());
+        info!("Host joined tunnel: {}", session_id);
+    } else {
+        state.tunnel_clients.insert(session_id.clone(), tx.clone());
+        info!("Client joined tunnel: {}", session_id);
+    }
+
+    let state_clone = state.clone();
+    let session_clone = session_id.clone();
+    let role_clone = role.clone();
+
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            if role_clone == "host" {
+                if let Some(client_tx) = state_clone.tunnel_clients.get(&session_clone) {
+                    let _ = client_tx.send(msg).await;
+                }
+            } else {
+                if let Some(host_tx) = state_clone.tunnel_hosts.get(&session_clone) {
+                    let _ = host_tx.send(msg).await;
+                }
+            }
+        }
+        
+        if role_clone == "host" {
+            state_clone.tunnel_hosts.remove(&session_clone);
+        } else {
+            state_clone.tunnel_clients.remove(&session_clone);
+        }
+        info!("{} disconnected from tunnel: {}", role_clone, session_clone);
+    });
+
     tokio::select! {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),

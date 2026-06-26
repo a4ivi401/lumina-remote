@@ -3051,6 +3051,7 @@ name = "lumina-ui"
 version = "0.1.0"
 dependencies = [
  "base64 0.21.7",
+ "futures-util",
  "image 0.24.9",
  "lazy_static",
  "lumina-capture",
@@ -3065,6 +3066,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "tokio-tungstenite 0.29.0",
 ]
 
 [[package]]
