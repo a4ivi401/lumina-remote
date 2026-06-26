@@ -145,7 +145,7 @@ async fn check_signal_server(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn get_local_network_devices(app: tauri::AppHandle) -> Result<Vec<SavedMachine>, String> {
+async fn get_local_network_devices(_app: tauri::AppHandle) -> Result<Vec<SavedMachine>, String> {
     let local_id = get_local_device_id();
     let discovered = lumina_network::mdns_discovery::discover_all_local_hosts(2).await?;
     
@@ -308,7 +308,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Start background mDNS advertisement so other computers on the LAN can find us!
-            let app_handle = app.handle().clone();
+            let _app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let my_id = get_local_device_id();
                 let port = 4433; 
