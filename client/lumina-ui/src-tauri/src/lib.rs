@@ -301,7 +301,16 @@ async fn connect_to_device(
         use tokio_tungstenite::tungstenite::protocol::Message;
         
         let clean_pin = pin.replace("-", "");
-        write.send(Message::Text(format!("AUTH:{}", clean_pin).into())).await.map_err(|e| format!("Failed to send auth: {}", e))?;
+        let auth_msg = format!("AUTH:{}", clean_pin);
+        
+        println!("[Lumina] Connected to Tunnel. Waiting for Host READY...");
+        while let Some(Ok(Message::Text(msg))) = read.next().await {
+            if msg.to_string() == "READY" {
+                println!("[Lumina] Received READY, sending AUTH...");
+                write.send(Message::Text(auth_msg.clone().into())).await.map_err(|e| format!("Failed to send auth: {}", e))?;
+                break;
+            }
+        }
             
         let (tx, mut rx) = mpsc::unbounded_channel::<InputEvent>();
         *INPUT_SENDER.lock().unwrap() = Some(tx);
@@ -435,18 +444,38 @@ pub fn run() {
                                             use futures_util::{SinkExt, StreamExt};
                                             use tokio_tungstenite::tungstenite::protocol::Message;
                                             
-                                            println!("[Lumina] Joined Tunnel. Waiting for Auth...");
-                                            if let Some(Ok(Message::Text(auth_msg))) = read.next().await {
-                                                let expected = format!("AUTH:{}", HOST_PIN.lock().unwrap().replace("-", ""));
-                                                if auth_msg.to_string() == expected {
-                                                    println!("[Lumina] Tunnel Auth Success!");
-                                                } else {
-                                                    println!("[Lumina] Tunnel Auth Failed! Expected {} got {}", expected, auth_msg);
-                                                    return;
+                                            println!("[Lumina] Joined Tunnel. Sending READY pings...");
+                                            
+                                            let (auth_tx, auth_rx) = tokio::sync::oneshot::channel();
+                                            let expected_auth = format!("AUTH:{}", HOST_PIN.lock().unwrap().replace("-", ""));
+                                            
+                                            let mut write_auth = write;
+                                            let mut read_auth = read;
+                                            
+                                            tokio::spawn(async move {
+                                                loop {
+                                                    let _ = write_auth.send(Message::Text("READY".into())).await;
+                                                    
+                                                    let timeout = tokio::time::sleep(std::time::Duration::from_millis(200));
+                                                    tokio::select! {
+                                                        msg_opt = read_auth.next() => {
+                                                            if let Some(Ok(Message::Text(auth_msg))) = msg_opt {
+                                                                if auth_msg.to_string() == expected_auth {
+                                                                    println!("[Lumina] Tunnel Auth Success!");
+                                                                    let _ = auth_tx.send((write_auth, read_auth));
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                        _ = timeout => {}
+                                                    }
                                                 }
-                                            } else {
-                                                return;
-                                            }
+                                            });
+                                            
+                                            let (mut write, mut read) = match auth_rx.await {
+                                                Ok(io) => io,
+                                                Err(_) => return,
+                                            };
 
                                             let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
                                             std::thread::spawn(move || {
