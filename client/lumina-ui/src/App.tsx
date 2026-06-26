@@ -190,7 +190,7 @@ function App() {
     return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 8)}-${cleaned.slice(8, 12)}`;
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isConnected) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // Simple scaling mapping (assuming remote and local resolutions align for now)
@@ -199,7 +199,7 @@ function App() {
     invoke("send_input", { event: JSON.stringify({ MouseMove: { x, y } }) });
   };
 
-  const handleMouseClick = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleMouseClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isConnected) return;
     let button = "left";
     if (e.button === 2) button = "right";
