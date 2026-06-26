@@ -187,6 +187,9 @@ async fn trigger_connection_request(app: tauri::AppHandle, partner_id: String) -
     }).to_string();
     
     client.send_payload(req_msg).await.map_err(|e| format!("Signal send failed: {}", e))?;
+    
+    // Wait slightly to ensure the WebSocket frame is fully flushed over the network before dropping
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     Ok(())
 }
 
@@ -416,122 +419,126 @@ pub fn run() {
                 let my_id_sig = my_id.clone();
                 let public_addr_str = our_public_addr.map(|a| a.to_string()).unwrap_or_default();
                 tokio::spawn(async move {
-                    let session_for_tunnel = my_id_sig.clone();
-                    if let Ok((_client, mut rx)) = lumina_network::signaling::SignalingClient::connect(&config.signal_server, my_id_sig, true).await {
-                        println!("[Lumina] Connected to Signal Server as Host");
-                        while let Some(msg) = rx.recv().await {
-                            if let Ok(req) = serde_json::from_str::<serde_json::Value>(&msg) {
-                                if req["type"] == "connect_request" {
-                                    let client_id = req["client_id"].as_str().unwrap_or("Unknown").to_string();
-                                    
-                                    let pin = generate_session_pin();
-                                    
-                                    #[derive(serde::Serialize, Clone)]
-                                    struct IncomingPayload {
-                                        partner: String,
-                                        pin: String,
-                                    }
-                                    let _ = app_handle_sig.emit("incoming-connection", IncomingPayload {
-                                        partner: client_id,
-                                        pin,
-                                    });
-                                } else if req["type"] == "start_tunnel" {
-                                    let config = load_config(&app_handle_sig).unwrap_or_default();
-                                    
-                                    let session = session_for_tunnel.clone();
-                                    tokio::spawn(async move {
-                                        if let Ok((mut write, mut read)) = lumina_network::signaling::connect_tunnel(&config.signal_server, &session, "host").await {
-                                            use futures_util::{SinkExt, StreamExt};
-                                            use tokio_tungstenite::tungstenite::protocol::Message;
-                                            
-                                            println!("[Lumina] Joined Tunnel. Sending READY pings...");
-                                            
-                                            let (auth_tx, auth_rx) = tokio::sync::oneshot::channel();
-                                            let expected_auth = format!("AUTH:{}", HOST_PIN.lock().unwrap().replace("-", ""));
-                                            
-                                            let mut write_auth = write;
-                                            let mut read_auth = read;
-                                            
-                                            tokio::spawn(async move {
-                                                loop {
-                                                    let _ = write_auth.send(Message::Text("READY".into())).await;
-                                                    
-                                                    let timeout = tokio::time::sleep(std::time::Duration::from_millis(200));
-                                                    tokio::select! {
-                                                        msg_opt = read_auth.next() => {
-                                                            if let Some(Ok(Message::Text(auth_msg))) = msg_opt {
-                                                                if auth_msg.to_string() == expected_auth {
-                                                                    println!("[Lumina] Tunnel Auth Success!");
-                                                                    let _ = auth_tx.send((write_auth, read_auth));
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                        _ = timeout => {}
-                                                    }
-                                                }
-                                            });
-                                            
-                                            let (mut write, mut read) = match auth_rx.await {
-                                                Ok(io) => io,
-                                                Err(_) => return,
-                                            };
-
-                                            let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
-                                            std::thread::spawn(move || {
-                                                if let Ok(mut capturer) = lumina_capture::create_capture_device() {
-                                                    if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
-                                                        loop {
-                                                            if let Ok(frame) = capturer.capture_frame() {
-                                                                if let Ok(packets) = encoder.encode_frame(&frame) {
-                                                                    for pkt in packets {
-                                                                        if frame_tx.blocking_send(pkt).is_err() { return; }
+                    loop {
+                        let session_for_tunnel = my_id_sig.clone();
+                        if let Ok((_client, mut rx)) = lumina_network::signaling::SignalingClient::connect(&config.signal_server, my_id_sig.clone(), true).await {
+                            println!("[Lumina] Connected to Signal Server as Host");
+                            while let Some(msg) = rx.recv().await {
+                                if let Ok(req) = serde_json::from_str::<serde_json::Value>(&msg) {
+                                    if req["type"] == "connect_request" {
+                                        let client_id = req["client_id"].as_str().unwrap_or("Unknown").to_string();
+                                        
+                                        let pin = generate_session_pin();
+                                        
+                                        #[derive(serde::Serialize, Clone)]
+                                        struct IncomingPayload {
+                                            partner: String,
+                                            pin: String,
+                                        }
+                                        let _ = app_handle_sig.emit("incoming-connection", IncomingPayload {
+                                            partner: client_id,
+                                            pin,
+                                        });
+                                    } else if req["type"] == "start_tunnel" {
+                                        let config = load_config(&app_handle_sig).unwrap_or_default();
+                                        
+                                        let session = session_for_tunnel.clone();
+                                        tokio::spawn(async move {
+                                            if let Ok((mut write, mut read)) = lumina_network::signaling::connect_tunnel(&config.signal_server, &session, "host").await {
+                                                use futures_util::{SinkExt, StreamExt};
+                                                use tokio_tungstenite::tungstenite::protocol::Message;
+                                                
+                                                println!("[Lumina] Joined Tunnel. Sending READY pings...");
+                                                
+                                                let (auth_tx, auth_rx) = tokio::sync::oneshot::channel();
+                                                let expected_auth = format!("AUTH:{}", HOST_PIN.lock().unwrap().replace("-", ""));
+                                                
+                                                let mut write_auth = write;
+                                                let mut read_auth = read;
+                                                
+                                                tokio::spawn(async move {
+                                                    loop {
+                                                        let _ = write_auth.send(Message::Text("READY".into())).await;
+                                                        
+                                                        let timeout = tokio::time::sleep(std::time::Duration::from_millis(200));
+                                                        tokio::select! {
+                                                            msg_opt = read_auth.next() => {
+                                                                if let Some(Ok(Message::Text(auth_msg))) = msg_opt {
+                                                                    if auth_msg.to_string() == expected_auth {
+                                                                        println!("[Lumina] Tunnel Auth Success!");
+                                                                        let _ = auth_tx.send((write_auth, read_auth));
+                                                                        break;
                                                                     }
                                                                 }
                                                             }
-                                                            std::thread::sleep(std::time::Duration::from_millis(33));
+                                                            _ = timeout => {}
+                                                        }
+                                                    }
+                                                });
+                                                
+                                                let (mut write, mut read) = match auth_rx.await {
+                                                    Ok(io) => io,
+                                                    Err(_) => return,
+                                                };
+
+                                                let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
+                                                std::thread::spawn(move || {
+                                                    if let Ok(mut capturer) = lumina_capture::create_capture_device() {
+                                                        if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
+                                                            loop {
+                                                                if let Ok(frame) = capturer.capture_frame() {
+                                                                    if let Ok(packets) = encoder.encode_frame(&frame) {
+                                                                        for pkt in packets {
+                                                                            if frame_tx.blocking_send(pkt).is_err() { return; }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                std::thread::sleep(std::time::Duration::from_millis(33));
+                                                            }
+                                                        }
+                                                    }
+                                                });
+
+                                                let (input_tx, input_rx) = std::sync::mpsc::channel::<InputEvent>();
+                                                std::thread::spawn(move || {
+                                                    let mut controller = lumina_input::InputController::new();
+                                                    while let Ok(evt) = input_rx.recv() {
+                                                        controller.handle_event(evt);
+                                                    }
+                                                });
+
+                                                tokio::spawn(async move {
+                                                    while let Some(pkt) = frame_rx.recv().await {
+                                                        let size = pkt.data.len() as u32;
+                                                        let is_key = if pkt.is_keyframe { 1u8 } else { 0u8 };
+                                                        let mut meta = [0u8; 13];
+                                                        meta[0..4].copy_from_slice(&size.to_be_bytes());
+                                                        meta[4] = is_key;
+                                                        meta[5..13].copy_from_slice(&pkt.timestamp_us.to_be_bytes());
+                                                        
+                                                        let mut full_payload = Vec::with_capacity(13 + pkt.data.len());
+                                                        full_payload.extend_from_slice(&meta);
+                                                        full_payload.extend_from_slice(&pkt.data);
+                                                        
+                                                        if write.send(Message::Binary(full_payload.into())).await.is_err() { break; }
+                                                    }
+                                                });
+
+                                                while let Some(Ok(msg)) = read.next().await {
+                                                    if let Message::Text(txt) = msg {
+                                                        if let Ok(evt) = serde_json::from_str::<InputEvent>(&txt.to_string()) {
+                                                            let _ = input_tx.send(evt);
                                                         }
                                                     }
                                                 }
-                                            });
-
-                                            let (input_tx, input_rx) = std::sync::mpsc::channel::<InputEvent>();
-                                            std::thread::spawn(move || {
-                                                let mut controller = lumina_input::InputController::new();
-                                                while let Ok(evt) = input_rx.recv() {
-                                                    controller.handle_event(evt);
-                                                }
-                                            });
-
-                                            tokio::spawn(async move {
-                                                while let Some(pkt) = frame_rx.recv().await {
-                                                    let size = pkt.data.len() as u32;
-                                                    let is_key = if pkt.is_keyframe { 1u8 } else { 0u8 };
-                                                    let mut meta = [0u8; 13];
-                                                    meta[0..4].copy_from_slice(&size.to_be_bytes());
-                                                    meta[4] = is_key;
-                                                    meta[5..13].copy_from_slice(&pkt.timestamp_us.to_be_bytes());
-                                                    
-                                                    let mut full_payload = Vec::with_capacity(13 + pkt.data.len());
-                                                    full_payload.extend_from_slice(&meta);
-                                                    full_payload.extend_from_slice(&pkt.data);
-                                                    
-                                                    if write.send(Message::Binary(full_payload.into())).await.is_err() { break; }
-                                                }
-                                            });
-
-                                            while let Some(Ok(msg)) = read.next().await {
-                                                if let Message::Text(txt) = msg {
-                                                    if let Ok(evt) = serde_json::from_str::<InputEvent>(&txt.to_string()) {
-                                                        let _ = input_tx.send(evt);
-                                                    }
-                                                }
                                             }
-                                        }
-                                    });
+                                        });
+                                    }
                                 }
                             }
                         }
+                        println!("[Lumina] Signal server disconnected! Reconnecting in 3s...");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                     }
                 });
 
