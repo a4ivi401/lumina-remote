@@ -28,9 +28,7 @@ function App() {
   const [savedMachines, setSavedMachines] = useState<SavedMachine[]>([]);
   const [lanMachines, setLanMachines] = useState<SavedMachine[]>([]);
   
-  // Host PIN
-  const [hostPinRaw, setHostPinRaw] = useState("••••-••••-••••");
-  const hostPin = useScrambleText(hostPinRaw, hostPinRaw !== "••••-••••-••••");
+
 
   // Video Stream State
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -38,7 +36,7 @@ function App() {
   const [hasVideo, setHasVideo] = useState(false);
 
   // Incoming Connection State
-  const [incomingConnection, setIncomingConnection] = useState<string | null>(null);
+  const [incomingConnection, setIncomingConnection] = useState<{partner: string, pin: string} | null>(null);
 
   // Signal Server State
   const [signalServerConnected, setSignalServerConnected] = useState<boolean | null>(null);
@@ -48,10 +46,7 @@ function App() {
       .then(setDeviceIdRaw)
       .catch(console.error);
       
-    // Generate host pin immediately
-    invoke<string>("generate_session_pin")
-      .then(setHostPinRaw)
-      .catch(console.error);
+
       
     loadSavedMachines();
     
@@ -75,9 +70,9 @@ function App() {
       .then(setSignalServerConnected)
       .catch(() => setSignalServerConnected(false));
 
-    // Listen for incoming LAN connections
-    const unlistenConnection = listen<string>("incoming-connection", (event) => {
-      console.log("Incoming connection from:", event.payload);
+    // Listen for incoming connections
+    const unlistenConnection = listen<{ partner: string, pin: string }>("incoming-connection", (event) => {
+      console.log("Incoming connection from:", event.payload.partner);
       setIncomingConnection(event.payload);
     });
 
@@ -148,6 +143,7 @@ function App() {
 
   const handleConnectClick = () => {
     if (partnerId.length > 5) {
+      invoke("trigger_connection_request", { partnerId }).catch(console.error);
       setShowAuthPopup(true);
     }
   };
@@ -172,9 +168,7 @@ function App() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+
 
   const formatDeviceId = (val: string) => {
     const cleaned = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -335,7 +329,12 @@ function App() {
               
               <div>
                 <h3 className="font-bold text-xl text-white mb-1">Входящее подключение</h3>
-                <p className="text-sm text-gray-400">Устройство <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">{incomingConnection}</span> хочет получить доступ к вашему рабочему столу.</p>
+                <p className="text-sm text-gray-400 mb-4">Устройство <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">{incomingConnection.partner}</span> хочет получить доступ к вашему рабочему столу.</p>
+                
+                <div className="bg-black/50 border border-emerald-500/30 rounded-xl p-4 mt-2">
+                  <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">Сообщите этот PIN-код:</p>
+                  <div className="font-mono text-2xl tracking-[0.2em] text-emerald-400">{incomingConnection.pin}</div>
+                </div>
               </div>
 
               <div className="flex gap-3 w-full mt-4">
@@ -409,28 +408,11 @@ function App() {
                 </div>
               </div>
 
-              {/* Host PIN Display */}
-              <div className="mt-4">
-                <label className="text-[10px] text-gray-500 mb-1 uppercase tracking-widest block">Session PIN (Пароль)</label>
-                <div className="flex items-center gap-2">
-                  <div className="bg-[#0E0F14] rounded-xl p-3 border border-[#2A2B32] flex-1 text-center font-mono text-xl tracking-widest text-emerald-400">
-                    {hostPin}
-                  </div>
-                  <button 
-                    onClick={() => copyToClipboard(hostPinRaw)}
-                    className="p-3 bg-[#0E0F14] border border-[#2A2B32] hover:border-indigo-500/50 hover:text-indigo-400 rounded-xl transition-colors text-gray-400"
-                    title="Копировать пароль"
-                  >
-                    <Copy size={20} />
-                  </button>
-                  <button 
-                    onClick={() => invoke<string>("generate_session_pin").then(setHostPinRaw)}
-                    className="p-3 bg-[#0E0F14] border border-[#2A2B32] hover:border-indigo-500/50 hover:text-indigo-400 rounded-xl transition-colors text-gray-400"
-                    title="Сгенерировать новый пароль"
-                  >
-                    <Settings size={20} />
-                  </button>
-                </div>
+              {/* Host PIN is now dynamically generated on connection attempt */}
+              <div className="mt-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4">
+                <p className="text-xs text-indigo-300">
+                  PIN-код генерируется автоматически при входящем запросе на подключение.
+                </p>
               </div>
             </div>
             

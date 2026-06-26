@@ -175,6 +175,24 @@ struct VideoFramePayload {
 }
 
 #[tauri::command]
+async fn trigger_connection_request(app: tauri::AppHandle, partner_id: String) -> Result<(), String> {
+    let config = load_config(&app)?;
+    let my_id = get_local_device_id(app.clone());
+    
+    let (client, mut _rx) = lumina_network::signaling::SignalingClient::connect(&config.signal_server, partner_id, false)
+        .await
+        .map_err(|e| format!("Signal server connect failed: {}", e))?;
+        
+    let req_msg = serde_json::json!({
+        "type": "connect_request",
+        "client_id": my_id,
+    }).to_string();
+    
+    client.send_payload(req_msg).await.map_err(|e| format!("Signal send failed: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn connect_to_device(
     app: tauri::AppHandle,
     partner_id: String,
@@ -182,21 +200,76 @@ async fn connect_to_device(
     save_machine: bool,
 ) -> Result<String, String> {
     let config = load_config(&app)?;
-    let manager = lumina_network::manager::ConnectionManager::new(
-        config.stun_server,
-        config.signal_server,
-    );
-    let path = manager.establish_path(&partner_id).await?;
     
-    let addr = match path {
-        lumina_network::manager::ConnectionPath::DirectLan(addr) => addr,
-        _ => return Err("Only LAN is currently supported for this video test.".into()),
+    let mut use_wan = false;
+    let mut addr_to_connect = None;
+    
+    if let Ok(lan_addr) = lumina_network::mdns_discovery::discover_local_host(&partner_id, 2).await {
+        println!("[Lumina] Found via LAN! {}", lan_addr);
+        addr_to_connect = Some(lan_addr);
+    } else {
+        use_wan = true;
+    }
+
+    let (endpoint, _client) = if use_wan {
+        println!("[Lumina] LAN not found, attempting WAN via STUN and Signal Server...");
+        let (our_socket, _our_public_addr) = lumina_network::nat::discover_public_endpoint(&config.stun_server)
+            .await
+            .map_err(|e| format!("STUN failed: {}", e))?;
+            
+        let endpoint = lumina_network::create_client_endpoint_from_socket(our_socket)
+            .map_err(|e| format!("Failed to create QUIC endpoint: {}", e))?;
+            
+        let (client, mut rx) = lumina_network::signaling::SignalingClient::connect(&config.signal_server, partner_id.clone(), false)
+            .await
+            .map_err(|e| format!("Signal server connect failed: {}", e))?;
+            
+        let req_msg = serde_json::json!({
+            "type": "exchange_endpoints",
+            "client_id": get_local_device_id(app.clone()),
+        }).to_string();
+        
+        client.send_payload(req_msg).await.map_err(|e| format!("Signal send failed: {}", e))?;
+        
+        let mut host_endpoint = None;
+        let timeout_fut = tokio::time::sleep(std::time::Duration::from_secs(15));
+        tokio::pin!(timeout_fut);
+        
+        loop {
+            tokio::select! {
+                _ = &mut timeout_fut => {
+                    return Err("Connection request timed out. Host did not respond.".into());
+                }
+                msg_opt = rx.recv() => {
+                    if let Some(msg) = msg_opt {
+                        if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&msg) {
+                            if resp["type"] == "endpoint_response" {
+                                let ep = resp["host_endpoint"].as_str().unwrap_or("");
+                                if ep.is_empty() {
+                                    return Err("Host has no public endpoint (cannot traverse NAT).".into());
+                                }
+                                host_endpoint = Some(ep.parse::<std::net::SocketAddr>().map_err(|e| e.to_string())?);
+                                break;
+                            }
+                        }
+                    } else {
+                        return Err("Signal server disconnected".into());
+                    }
+                }
+            }
+        }
+        
+        addr_to_connect = host_endpoint;
+        (endpoint, Some(client))
+    } else {
+        let client_addr: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let endpoint = lumina_network::create_client_endpoint(client_addr)
+            .map_err(|e| format!("Failed to create QUIC endpoint: {}", e))?;
+        (endpoint, None)
     };
 
-    println!("[Lumina] Found via LAN! Connecting QUIC to {}", addr);
-    let client_addr: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let endpoint = lumina_network::create_client_endpoint(client_addr)
-        .map_err(|e| format!("Failed to create QUIC endpoint: {}", e))?;
+    let addr = addr_to_connect.ok_or("No address to connect to")?;
+    println!("[Lumina] Connecting QUIC to {}", addr);
         
     let connect_task = endpoint.connect(addr, "lumina.a4ivi4.dev")
         .map_err(|e| format!("Failed to connect: {}", e))?;
@@ -293,137 +366,185 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let my_id = get_local_device_id(app_handle.clone());
+                let config = load_config(&app_handle).unwrap_or_default();
+                
+                let stun_res = lumina_network::nat::discover_public_endpoint(&config.stun_server).await;
+                let (our_public_addr, our_socket) = match stun_res {
+                    Ok((sock, addr)) => {
+                        println!("[Lumina] STUN discovery successful! {}", addr);
+                        (Some(addr), Some(sock))
+                    },
+                    Err(e) => {
+                        println!("[Lumina] STUN discovery failed: {}", e);
+                        (None, None)
+                    }
+                };
+
                 let port = 4433; 
+                let endpoint = if let Some(sock) = our_socket {
+                    lumina_network::create_server_endpoint_from_socket(sock).unwrap()
+                } else {
+                    let bind_addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+                    lumina_network::create_server_endpoint(bind_addr).unwrap()
+                };
                 
                 match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
                     Ok(_daemon) => {
                         println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
-                        
-                        let bind_addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-                        if let Ok(endpoint) = lumina_network::create_server_endpoint(bind_addr) {
-                            println!("[Lumina] Listening for incoming QUIC connections on port {}", port);
-                            
-                            loop {
-                                if let Some(incoming) = endpoint.accept().await {
-                                    println!("[Lumina] Incoming QUIC connection...");
+                    }
+                    Err(e) => println!("[Lumina] Failed to advertise mDNS: {}", e),
+                }
+
+                let app_handle_sig = app_handle.clone();
+                let my_id_sig = my_id.clone();
+                let public_addr_str = our_public_addr.map(|a| a.to_string()).unwrap_or_default();
+                tokio::spawn(async move {
+                    if let Ok((client, mut rx)) = lumina_network::signaling::SignalingClient::connect(&config.signal_server, my_id_sig, true).await {
+                        println!("[Lumina] Connected to Signal Server as Host");
+                        while let Some(msg) = rx.recv().await {
+                            if let Ok(req) = serde_json::from_str::<serde_json::Value>(&msg) {
+                                if req["type"] == "connect_request" {
+                                    let client_id = req["client_id"].as_str().unwrap_or("Unknown").to_string();
                                     
-                                    let app_handle = app_handle.clone();
-                                    tokio::spawn(async move {
-                                        match incoming.await {
-                                            Ok(conn) => {
-                                                let expected_pin = HOST_PIN.lock().unwrap().replace("-", "");
-                                                let (secret, _) = lumina_core::derive_key_pair(&expected_pin);
-                                                
-                                                println!("[Lumina] Performing Zero-Trust handshake...");
-                                                if let Err(e) = lumina_network::handshake::perform_handshake(&conn, true, &secret).await {
-                                                    println!("[Lumina] Handshake rejected: {}", e);
-                                                    return;
-                                                }
-                                                println!("[Lumina] Handshake verified. Connection secure.");
-                                                
-                                                let (tx, rx) = tokio::sync::oneshot::channel();
-                                                *PENDING_CONNECTION.lock().unwrap() = Some(tx);
-                                                
-                                                let partner_addr = conn.remote_address().to_string();
-                                                let _ = app_handle.emit("incoming-connection", partner_addr);
-                                                
-                                                if let Ok(accepted) = rx.await {
-                                                    if !accepted {
-                                                        println!("[Lumina] Connection rejected by user.");
-                                                        return;
-                                                    }
-                                                } else {
-                                                    return;
-                                                }
-                                                
-                                                let mut send_video = match conn.open_uni().await {
-                                                    Ok(s) => s,
-                                                    Err(e) => { println!("Failed to open video stream: {}", e); return; }
-                                                };
-                                                
-                                                let mut recv_input = match conn.accept_uni().await {
-                                                    Ok(s) => s,
-                                                    Err(e) => { println!("Failed to accept input stream: {}", e); return; }
-                                                };
-                                                
-                                                let (input_tx, input_rx) = std::sync::mpsc::channel::<InputEvent>();
-                                                
-                                                std::thread::spawn(move || {
-                                                    let mut controller = lumina_input::InputController::new();
-                                                    while let Ok(evt) = input_rx.recv() {
-                                                        controller.handle_event(evt);
-                                                    }
-                                                });
-
-                                                tokio::spawn(async move {
-                                                    loop {
-                                                        let mut size_buf = [0u8; 4];
-                                                        if recv_input.read_exact(&mut size_buf).await.is_err() { break; }
-                                                        let size = u32::from_be_bytes(size_buf) as usize;
-                                                        let mut json_buf = vec![0u8; size];
-                                                        if recv_input.read_exact(&mut json_buf).await.is_err() { break; }
-                                                        
-                                                        if let Ok(json_str) = String::from_utf8(json_buf) {
-                                                            if let Ok(evt) = serde_json::from_str::<InputEvent>(&json_str) {
-                                                                let _ = input_tx.send(evt);
-                                                            }
-                                                        }
-                                                    }
-                                                });
-                                                
-                                                let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
-                                                
-                                                std::thread::spawn(move || {
-                                                    match lumina_capture::create_capture_device() {
-                                                        Ok(mut capturer) => {
-                                                            println!("[Lumina] Capture device created. Starting Native OS H.264 Encoder...");
-                                                            if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
-                                                                loop {
-                                                                    match capturer.capture_frame() {
-                                                                        Ok(frame) => {
-                                                                            if let Ok(packets) = encoder.encode_frame(&frame) {
-                                                                                for pkt in packets {
-                                                                                    if frame_tx.blocking_send(pkt).is_err() {
-                                                                                        println!("[Lumina] Video stream receiver dropped.");
-                                                                                        return;
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        Err(e) => println!("[Lumina] capture_frame error: {}", e),
-                                                                    }
-                                                                    std::thread::sleep(std::time::Duration::from_millis(33));
-                                                                }
-                                                            } else {
-                                                                println!("[Lumina] Failed to initialize FFmpeg Encoder!");
-                                                            }
-                                                        }
-                                                        Err(e) => println!("[Lumina] FATAL: Failed to create capture device: {}", e),
-                                                    }
-                                                });
-
-                                                tokio::spawn(async move {
-                                                    while let Some(pkt) = frame_rx.recv().await {
-                                                        let size = pkt.data.len() as u32;
-                                                        let is_key = if pkt.is_keyframe { 1u8 } else { 0u8 };
-                                                        let mut meta = [0u8; 13];
-                                                        meta[0..4].copy_from_slice(&size.to_be_bytes());
-                                                        meta[4] = is_key;
-                                                        meta[5..13].copy_from_slice(&pkt.timestamp_us.to_be_bytes());
-                                                        
-                                                        if send_video.write_all(&meta).await.is_err() { break; }
-                                                        if send_video.write_all(&pkt.data).await.is_err() { break; }
-                                                    }
-                                                });
-                                            }
-                                            Err(e) => println!("[Lumina] Connection failed: {}", e),
-                                        }
+                                    let pin = generate_session_pin();
+                                    
+                                    #[derive(serde::Serialize, Clone)]
+                                    struct IncomingPayload {
+                                        partner: String,
+                                        pin: String,
+                                    }
+                                    let _ = app_handle_sig.emit("incoming-connection", IncomingPayload {
+                                        partner: client_id,
+                                        pin,
                                     });
+                                } else if req["type"] == "exchange_endpoints" {
+                                    let accept_msg = serde_json::json!({
+                                        "type": "endpoint_response",
+                                        "host_endpoint": public_addr_str
+                                    }).to_string();
+                                    let _ = client.send_payload(accept_msg).await;
                                 }
                             }
                         }
                     }
-                    Err(e) => println!("[Lumina] Failed to advertise mDNS: {}", e),
+                });
+
+                println!("[Lumina] Listening for incoming QUIC connections on port {}", port);
+                
+                loop {
+                    if let Some(incoming) = endpoint.accept().await {
+                        println!("[Lumina] Incoming QUIC connection...");
+                        
+                        let app_handle = app_handle.clone();
+                        tokio::spawn(async move {
+                            match incoming.await {
+                                Ok(conn) => {
+                                    let expected_pin = HOST_PIN.lock().unwrap().replace("-", "");
+                                    let (secret, _) = lumina_core::derive_key_pair(&expected_pin);
+                                    
+                                    println!("[Lumina] Performing Zero-Trust handshake...");
+                                    if let Err(e) = lumina_network::handshake::perform_handshake(&conn, true, &secret).await {
+                                        println!("[Lumina] Handshake rejected: {}", e);
+                                        return;
+                                    }
+                                    println!("[Lumina] Handshake verified. Connection secure.");
+                                    
+                                    let (tx, rx) = tokio::sync::oneshot::channel();
+                                    *PENDING_CONNECTION.lock().unwrap() = Some(tx);
+                                    
+                                    if let Ok(accepted) = rx.await {
+                                        if !accepted {
+                                            println!("[Lumina] Connection rejected by user.");
+                                            return;
+                                        }
+                                    } else {
+                                        return;
+                                    }
+                                    
+                                    let mut send_video = match conn.open_uni().await {
+                                        Ok(s) => s,
+                                        Err(e) => { println!("Failed to open video stream: {}", e); return; }
+                                    };
+                                    
+                                    let mut recv_input = match conn.accept_uni().await {
+                                        Ok(s) => s,
+                                        Err(e) => { println!("Failed to accept input stream: {}", e); return; }
+                                    };
+                                    
+                                    let (input_tx, input_rx) = std::sync::mpsc::channel::<InputEvent>();
+                                    
+                                    std::thread::spawn(move || {
+                                        let mut controller = lumina_input::InputController::new();
+                                        while let Ok(evt) = input_rx.recv() {
+                                            controller.handle_event(evt);
+                                        }
+                                    });
+
+                                    tokio::spawn(async move {
+                                        loop {
+                                            let mut size_buf = [0u8; 4];
+                                            if recv_input.read_exact(&mut size_buf).await.is_err() { break; }
+                                            let size = u32::from_be_bytes(size_buf) as usize;
+                                            let mut json_buf = vec![0u8; size];
+                                            if recv_input.read_exact(&mut json_buf).await.is_err() { break; }
+                                            
+                                            if let Ok(json_str) = String::from_utf8(json_buf) {
+                                                if let Ok(evt) = serde_json::from_str::<InputEvent>(&json_str) {
+                                                    let _ = input_tx.send(evt);
+                                                }
+                                            }
+                                        }
+                                    });
+                                    
+                                    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
+                                    
+                                    std::thread::spawn(move || {
+                                        match lumina_capture::create_capture_device() {
+                                            Ok(mut capturer) => {
+                                                println!("[Lumina] Capture device created. Starting Native OS H.264 Encoder...");
+                                                if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
+                                                    loop {
+                                                        match capturer.capture_frame() {
+                                                            Ok(frame) => {
+                                                                if let Ok(packets) = encoder.encode_frame(&frame) {
+                                                                    for pkt in packets {
+                                                                        if frame_tx.blocking_send(pkt).is_err() {
+                                                                            println!("[Lumina] Video stream receiver dropped.");
+                                                                            return;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            Err(e) => println!("[Lumina] capture_frame error: {}", e),
+                                                        }
+                                                        std::thread::sleep(std::time::Duration::from_millis(33));
+                                                    }
+                                                } else {
+                                                    println!("[Lumina] Failed to initialize FFmpeg Encoder!");
+                                                }
+                                            }
+                                            Err(e) => println!("[Lumina] FATAL: Failed to create capture device: {}", e),
+                                        }
+                                    });
+
+                                    tokio::spawn(async move {
+                                        while let Some(pkt) = frame_rx.recv().await {
+                                            let size = pkt.data.len() as u32;
+                                            let is_key = if pkt.is_keyframe { 1u8 } else { 0u8 };
+                                            let mut meta = [0u8; 13];
+                                            meta[0..4].copy_from_slice(&size.to_be_bytes());
+                                            meta[4] = is_key;
+                                            meta[5..13].copy_from_slice(&pkt.timestamp_us.to_be_bytes());
+                                            
+                                            if send_video.write_all(&meta).await.is_err() { break; }
+                                            if send_video.write_all(&pkt.data).await.is_err() { break; }
+                                        }
+                                    });
+                                }
+                                Err(e) => println!("[Lumina] Connection failed: {}", e),
+                            }
+                        });
+                    }
                 }
             });
 
@@ -452,6 +573,7 @@ pub fn run() {
             get_local_device_id,
             generate_session_pin,
             connect_to_device,
+            trigger_connection_request,
             get_saved_machines,
             get_local_network_devices,
             send_input,

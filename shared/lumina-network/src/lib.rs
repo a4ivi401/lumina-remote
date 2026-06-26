@@ -63,6 +63,28 @@ pub fn create_client_endpoint(bind_addr: SocketAddr) -> Result<Endpoint, std::io
     Ok(endpoint)
 }
 
+pub fn create_server_endpoint_from_socket(socket: std::net::UdpSocket) -> Result<Endpoint, std::io::Error> {
+    let server_config = configure_server();
+    let endpoint = Endpoint::new(
+        quinn::EndpointConfig::default(),
+        Some(server_config),
+        socket,
+        Arc::new(quinn::TokioRuntime),
+    )?;
+    Ok(endpoint)
+}
+
+pub fn create_client_endpoint_from_socket(socket: std::net::UdpSocket) -> Result<Endpoint, std::io::Error> {
+    let mut endpoint = Endpoint::new(
+        quinn::EndpointConfig::default(),
+        None,
+        socket,
+        Arc::new(quinn::TokioRuntime),
+    )?;
+    endpoint.set_default_client_config(configure_client());
+    Ok(endpoint)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
