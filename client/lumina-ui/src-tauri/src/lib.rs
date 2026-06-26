@@ -195,7 +195,7 @@ async fn connect_to_device(
 
     println!("[Lumina] Found via LAN! Connecting QUIC to {}", addr);
     let client_addr: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
-    let mut endpoint = lumina_network::create_client_endpoint(client_addr)
+    let endpoint = lumina_network::create_client_endpoint(client_addr)
         .map_err(|e| format!("Failed to create QUIC endpoint: {}", e))?;
         
     let connect_task = endpoint.connect(addr, "lumina.a4ivi4.dev")
@@ -282,7 +282,7 @@ async fn connect_to_device(
 
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

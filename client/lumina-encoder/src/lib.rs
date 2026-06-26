@@ -34,17 +34,17 @@ mod macos_native {
 
     /// Native Apple VideoToolbox Encoder (H.264 Hardware Acceleration)
     pub struct NativeMacEncoder {
-        width: u32,
-        height: u32,
+        _width: u32,
+        _height: u32,
         frame_count: u64,
     }
 
     impl NativeMacEncoder {
-        pub fn new(width: u32, height: u32, _fps: i32) -> Result<Self, String> {
+        pub fn new(_width: u32, _height: u32, _fps: i32) -> Result<Self, String> {
             println!("[Lumina Encoder] Initializing Apple VideoToolbox Hardware Encoder...");
             Ok(Self {
-                width,
-                height,
+                _width,
+                _height,
                 frame_count: 0,
             })
         }
@@ -72,22 +72,22 @@ mod windows_native {
 
     /// Native Windows Media Foundation Encoder (H.264 Hardware Acceleration)
     pub struct NativeWinEncoder {
-        width: u32,
-        height: u32,
+        _width: u32,
+        _height: u32,
         frame_count: u64,
         // mf_transform: IMFTransform,
     }
 
     impl NativeWinEncoder {
-        pub fn new(width: u32, height: u32, _fps: i32) -> Result<Self, String> {
+        pub fn new(_width: u32, _height: u32, _fps: i32) -> Result<Self, String> {
             println!("[Lumina Encoder] Initializing Windows Media Foundation Hardware Encoder...");
             // unsafe {
             //     CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
             //     MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET).ok()?;
             // }
             Ok(Self {
-                width,
-                height,
+                _width,
+                _height,
                 frame_count: 0,
             })
         }
@@ -117,19 +117,19 @@ mod linux_native {
 
     /// Native Linux VA-API Encoder (H.264 Hardware Acceleration via libva)
     pub struct NativeLinuxEncoder {
-        width: u32,
-        height: u32,
+        _width: u32,
+        _height: u32,
         frame_count: u64,
         // va_display: std::sync::Arc<Display>,
     }
 
     impl NativeLinuxEncoder {
-        pub fn new(width: u32, height: u32, _fps: i32) -> Result<Self, String> {
+        pub fn new(_width: u32, _height: u32, _fps: i32) -> Result<Self, String> {
             println!("[Lumina Encoder] Initializing Linux VA-API Hardware Encoder...");
             // let display = libva::Display::open_drm_display("/dev/dri/renderD128").map_err(|e| e.to_string())?;
             Ok(Self {
-                width,
-                height,
+                _width,
+                _height,
                 frame_count: 0,
             })
         }

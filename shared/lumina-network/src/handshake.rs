@@ -35,9 +35,8 @@ pub async fn perform_handshake(
     // 3. To prevent MITM relay attacks, we must bind the authentication to the TLS session.
     // We do this by extracting the peer's certificate (which is unique to this exact TLS connection)
     // and including it in the HMAC.
-    let peer_identity = conn.peer_identity();
     let mut peer_cert_bytes = Vec::new();
-    if let Some(identity) = peer_identity {
+    if let Some(identity) = conn.peer_identity() {
         if let Some(certs) = identity.downcast_ref::<Vec<rustls::Certificate>>() {
             if let Some(cert) = certs.first() {
                 peer_cert_bytes = cert.0.clone();
