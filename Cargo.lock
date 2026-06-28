@@ -854,15 +854,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9885fa71e26b8ab7855e2ec7cae6e9b380edff76cd052e07c683a0319d51b3a2"
 
 [[package]]
-name = "core-audio-types"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9650b9f98d8bdb52688fbe26c81e4fc4b3cb911bc002fb7d52011e206f0f769"
-dependencies = [
- "objc2-core-audio-types",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -947,48 +938,6 @@ dependencies = [
  "bitflags 2.13.0",
  "core-foundation 0.10.1",
  "libc",
-]
-
-[[package]]
-name = "core-graphics2"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b65858d95344d2711161cd92196732f67d6c5fea238cf12f994584828731a5c"
-dependencies = [
- "bitflags 2.13.0",
- "block",
- "cfg-if",
- "core-foundation 0.10.1",
- "libc",
-]
-
-[[package]]
-name = "core-media"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db28ab254c42005e5c12bd2b5f6ea5670f53210455ee5aeb24f0898954942bf0"
-dependencies = [
- "block",
- "cfg-if",
- "core-audio-types",
- "core-foundation 0.10.1",
- "core-graphics2",
- "core-video",
- "libc",
-]
-
-[[package]]
-name = "core-video"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0f83d7bc2e8fbc517a71dcf3227003db7646e6c7aa5b0b5ab3acc89bc692641"
-dependencies = [
- "block",
- "core-foundation 0.10.1",
- "core-graphics2",
- "libc",
- "objc2-core-foundation",
- "objc2-io-surface",
 ]
 
 [[package]]
@@ -2965,10 +2914,9 @@ dependencies = [
 name = "lumina-encoder"
 version = "0.1.0"
 dependencies = [
+ "image 0.24.9",
  "lumina-capture",
  "lumina-protocol",
- "video-toolbox",
- "windows 0.52.0",
 ]
 
 [[package]]
@@ -6458,21 +6406,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "video-toolbox"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "123d2173cc401c8ec92fb12f3c37b7ffb1ed82ce9778163e25bb835f99627f97"
-dependencies = [
- "bitflags 2.13.0",
- "block",
- "core-foundation 0.10.1",
- "core-graphics2",
- "core-media",
- "core-video",
- "libc",
-]
-
-[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6957,16 +6890,6 @@ dependencies = [
 
 [[package]]
 name = "windows"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
-dependencies = [
- "windows-core 0.52.0",
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows"
 version = "0.61.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893"
@@ -7028,15 +6951,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1f8cf84f35d2db49a46868f947758c7a1138116f7fac3bc844f43ade1292e64"
 dependencies = [
  "windows-targets 0.48.5",
-]
-
-[[package]]
-name = "windows-core"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
-dependencies = [
- "windows-targets 0.52.6",
 ]
 
 [[package]]

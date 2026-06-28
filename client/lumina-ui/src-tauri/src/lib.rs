@@ -143,8 +143,16 @@ fn load_config(app: &tauri::AppHandle) -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-async fn check_signal_server(_app: tauri::AppHandle) -> Result<bool, String> {
-    Ok(true) 
+async fn check_signal_server(app: tauri::AppHandle) -> Result<bool, String> {
+    let config = load_config(&app).unwrap_or_default();
+    let url = config.signal_server.replace("ws://", "http://").replace("wss://", "https://").replace("/ws", "/");
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        tokio::net::TcpStream::connect(url.trim_start_matches("http://").trim_start_matches("https://"))
+    ).await {
+        Ok(Ok(_)) => Ok(true),
+        _ => Ok(false),
+    }
 }
 
 #[tauri::command]
@@ -400,17 +408,20 @@ pub fn run() {
                     }
                 };
 
-                let port = 4433; 
+                let default_port = 4433u16; 
                 let endpoint = if let Some(sock) = our_socket {
                     lumina_network::create_server_endpoint_from_socket(sock).unwrap()
                 } else {
-                    let bind_addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+                    let bind_addr: std::net::SocketAddr = format!("0.0.0.0:{}", default_port).parse().unwrap();
                     lumina_network::create_server_endpoint(bind_addr).unwrap()
                 };
                 
-                match lumina_network::mdns_discovery::advertise_local_service(port, &my_id) {
+                // FIX: Use the ACTUAL bound port for mDNS (may differ if STUN socket used)
+                let actual_port = endpoint.local_addr().map(|a| a.port()).unwrap_or(default_port);
+                
+                match lumina_network::mdns_discovery::advertise_local_service(actual_port, &my_id) {
                     Ok(_daemon) => {
-                        println!("[Lumina] Successfully advertising mDNS on LAN as: {}", my_id);
+                        println!("[Lumina] Successfully advertising mDNS on LAN as: {} port {}", my_id, actual_port);
                     }
                     Err(e) => println!("[Lumina] Failed to advertise mDNS: {}", e),
                 }
@@ -484,7 +495,10 @@ pub fn run() {
                                                 let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<lumina_encoder::EncodedPacket>(30);
                                                 std::thread::spawn(move || {
                                                     if let Ok(mut capturer) = lumina_capture::create_capture_device() {
-                                                        if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
+                                                        let w = capturer.get_width();
+                                                        let h = capturer.get_height();
+                                                        println!("[Lumina] Tunnel capture: {}x{}", w, h);
+                                                        if let Ok(mut encoder) = SystemEncoder::new(w.min(1920), h.min(1080), 30) {
                                                             loop {
                                                                 if let Ok(frame) = capturer.capture_frame() {
                                                                     if let Ok(packets) = encoder.encode_frame(&frame) {
@@ -542,7 +556,7 @@ pub fn run() {
                     }
                 });
 
-                println!("[Lumina] Listening for incoming QUIC connections on port {}", port);
+                println!("[Lumina] Listening for incoming QUIC connections on port {}", actual_port);
                 
                 loop {
                     if let Some(incoming) = endpoint.accept().await {
@@ -603,8 +617,10 @@ pub fn run() {
                                     std::thread::spawn(move || {
                                         match lumina_capture::create_capture_device() {
                                             Ok(mut capturer) => {
-                                                println!("[Lumina] Capture device created. Starting Native OS H.264 Encoder...");
-                                                if let Ok(mut encoder) = SystemEncoder::new(1920, 1080, 30) {
+                                                let w = capturer.get_width();
+                                                let h = capturer.get_height();
+                                                println!("[Lumina] Capture device created ({}x{}). Starting JPEG Encoder...", w, h);
+                                                if let Ok(mut encoder) = SystemEncoder::new(w.min(1920), h.min(1080), 30) {
                                                     loop {
                                                         match capturer.capture_frame() {
                                                             Ok(frame) => {
@@ -622,7 +638,7 @@ pub fn run() {
                                                         std::thread::sleep(std::time::Duration::from_millis(33));
                                                     }
                                                 } else {
-                                                    println!("[Lumina] Failed to initialize FFmpeg Encoder!");
+                                                    println!("[Lumina] Failed to initialize Encoder!");
                                                 }
                                             }
                                             Err(e) => println!("[Lumina] FATAL: Failed to create capture device: {}", e),

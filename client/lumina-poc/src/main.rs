@@ -1,4 +1,4 @@
-use lumina_capture::{CaptureDevice, XcapCapture};
+use lumina_capture::CaptureDevice;
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use winit::event::{Event, WindowEvent};
@@ -15,7 +15,7 @@ fn main() {
     let context = unsafe { Context::new(&window) }.unwrap();
     let mut surface = unsafe { Surface::new(&context, &window) }.unwrap();
 
-    let mut capturer = match XcapCapture::new() {
+    let mut capturer = match lumina_capture::create_capture_device() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to initialize capture: {}", e);

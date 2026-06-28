@@ -32,7 +32,6 @@ function App() {
 
   // Video Stream State
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const decoderRef = useRef<VideoDecoder | null>(null);
   const [hasVideo, setHasVideo] = useState(false);
 
   // Incoming Connection State
@@ -76,60 +75,30 @@ function App() {
       setIncomingConnection(event.payload);
     });
 
-    // Listen for video frames
+    // Listen for video frames (JPEG-encoded)
     const unlistenVideo = listen<{ data: string, is_keyframe: boolean, timestamp_us: number }>("video-frame", (event) => {
-      if (!decoderRef.current && canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (!ctx) return;
-        
-        const decoder = new VideoDecoder({
-          output(frame) {
-            setHasVideo(true);
-            if (canvasRef.current) {
-              if (canvasRef.current.width !== frame.displayWidth || canvasRef.current.height !== frame.displayHeight) {
-                canvasRef.current.width = frame.displayWidth;
-                canvasRef.current.height = frame.displayHeight;
-              }
-              ctx.drawImage(frame, 0, 0, canvasRef.current.width, canvasRef.current.height);
-            }
-            frame.close();
-          },
-          error(e) { console.error("VideoDecoder error:", e); }
-        });
-        
-        decoder.configure({ codec: 'avc1.42E01E' });
-        decoderRef.current = decoder;
-      }
+      if (!canvasRef.current) return;
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) return;
       
-      if (decoderRef.current && decoderRef.current.state === "configured") {
-        try {
-          const binaryString = atob(event.payload.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+      const img = new Image();
+      img.onload = () => {
+        setHasVideo(true);
+        if (canvasRef.current) {
+          if (canvasRef.current.width !== img.width || canvasRef.current.height !== img.height) {
+            canvasRef.current.width = img.width;
+            canvasRef.current.height = img.height;
           }
-          
-          const chunk = new EncodedVideoChunk({
-            type: event.payload.is_keyframe ? 'key' : 'delta',
-            timestamp: event.payload.timestamp_us,
-            data: bytes
-          });
-          
-          decoderRef.current.decode(chunk);
-        } catch (e) {
-          console.error("Failed to decode chunk", e);
+          ctx.drawImage(img, 0, 0);
         }
-      }
+      };
+      img.src = `data:image/jpeg;base64,${event.payload.data}`;
     });
 
     return () => {
       clearInterval(interval);
       unlistenConnection.then(f => f());
       unlistenVideo.then(f => f());
-      if (decoderRef.current && decoderRef.current.state !== "closed") {
-        decoderRef.current.close();
-        decoderRef.current = null;
-      }
     };
   }, []);
 

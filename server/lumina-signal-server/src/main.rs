@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Path, State,
     },
     response::IntoResponse,
     routing::get,
@@ -21,7 +21,7 @@ struct AppState {
     // Session ID -> Client's TX channel
     clients: DashMap<String, mpsc::Sender<String>>,
     
-    // WebRTC/Relay Tunnel Channels
+    // WebSocket Relay Tunnel Channels
     tunnel_hosts: DashMap<String, mpsc::Sender<Message>>,
     tunnel_clients: DashMap<String, mpsc::Sender<Message>>,
 }
@@ -50,7 +50,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        .route("/tunnel/:session_id/:role", get(tunnel_handler))
+        // FIX: axum 0.7 uses {param} syntax instead of :param
+        .route("/tunnel/{session_id}/{role}", get(tunnel_handler))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -143,8 +144,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     }
 }
 
-use axum::extract::Path;
-
 async fn tunnel_handler(
     ws: WebSocketUpgrade,
     Path((session_id, role)): Path<(String, String)>,
@@ -156,7 +155,8 @@ async fn tunnel_handler(
 async fn handle_tunnel_socket(socket: WebSocket, session_id: String, role: String, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
     
-    let (tx, mut rx) = mpsc::channel::<Message>(100);
+    // Channel buffer size increased to 256 for video stream throughput
+    let (tx, mut rx) = mpsc::channel::<Message>(256);
     
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -180,14 +180,32 @@ async fn handle_tunnel_socket(socket: WebSocket, session_id: String, role: Strin
 
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
-            if role_clone == "host" {
-                if let Some(client_tx) = state_clone.tunnel_clients.get(&session_clone) {
-                    let _ = client_tx.send(msg).await;
+            // Forward all message types (Text, Binary, Ping, Pong) between peers
+            match &msg {
+                Message::Text(_) | Message::Binary(_) => {
+                    if role_clone == "host" {
+                        if let Some(client_tx) = state_clone.tunnel_clients.get(&session_clone) {
+                            let _ = client_tx.send(msg).await;
+                        }
+                    } else {
+                        if let Some(host_tx) = state_clone.tunnel_hosts.get(&session_clone) {
+                            let _ = host_tx.send(msg).await;
+                        }
+                    }
                 }
-            } else {
-                if let Some(host_tx) = state_clone.tunnel_hosts.get(&session_clone) {
-                    let _ = host_tx.send(msg).await;
+                Message::Ping(data) => {
+                    // Respond with pong
+                    if role_clone == "host" {
+                        if let Some(client_tx) = state_clone.tunnel_clients.get(&session_clone) {
+                            let _ = client_tx.send(Message::Pong(data.clone())).await;
+                        }
+                    } else {
+                        if let Some(host_tx) = state_clone.tunnel_hosts.get(&session_clone) {
+                            let _ = host_tx.send(Message::Pong(data.clone())).await;
+                        }
+                    }
                 }
+                _ => {}
             }
         }
         
